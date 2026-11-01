@@ -2,242 +2,437 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Chicken Race</title>
+<title>Chicken Race 3D</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #1a1a2e; display: flex; align-items: center; justify-content: center; }
-  canvas { background: #16213e; box-shadow: 0 0 30px rgba(0,0,0,.6); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1a2e; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    color: #fff; font: bold 16px sans-serif; text-shadow: 0 1px 3px #000;
+    background: rgba(0,0,0,.35); padding: 8px 16px; border-radius: 8px;
+    pointer-events: none; width: max-content; max-width: 90%; text-align: center;
+  }
+  #msg {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    flex-direction: column; background: rgba(0,0,0,.6); color: #f9ed69;
+    font: bold 72px sans-serif; text-shadow: 0 2px 8px #000;
+  }
+  #msg small { font-size: 24px; color: #fff; margin-top: 16px; }
+  #countdown {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    color: #f9ed69; font: bold 110px sans-serif; text-shadow: 0 2px 8px #000;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
-<canvas id="game" width="960" height="600"></canvas>
-<script>
+<div id="hud"></div>
+<div id="countdown" role="status" aria-live="polite"></div>
+<div id="msg"><span id="result">VICTORY</span><small>Press Enter to return to the lobby</small></div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
 "use strict";
+import * as THREE from "three";
 
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
+const CELL = 2;        // world units per map cell
+const WALL_H = 3;      // wall height
+const R = 0.7;         // chicken collision radius
+const SPEED = 9;       // units / second
+const TURN = 2.6;      // radians / second
 
-const WALL = 20;           // wall thickness
-const PLAYER_R = 16;       // player radius
-const SPEED = 240;         // px per second
-
-const CX = W / 2, CY = H / 2;
-const OUTER_R = 270;       // track outer wall radius
-const INNER_R = 150;       // track inner wall radius
 const LAPS_TO_WIN = 3;
+const RIVAL_SPEED = SPEED * 0.8;
+// Follow the sketch's long perimeter; the solid infield seals every shortcut.
+const ROUTE = [
+  [51, 10], [51, 6], [37, 6], [34, 2], [19, 2], [16, 5],
+  [15, 11], [3, 11], [3, 17], [28, 17], [33, 14], [51, 14],
+];
+const cols = 55, rows = 21;
+const MAP = Array.from({ length: rows }, () => Array(cols).fill("x"));
+for (let n = 0; n < ROUTE.length; n++) {
+  const [ax, az] = ROUTE[n];
+  const [bx, bz] = ROUTE[(n + 1) % ROUTE.length];
+  const steps = Math.ceil(Math.hypot(bx - ax, bz - az) * 4);
+  for (let t = 0; t <= steps; t++) {
+    const x = Math.round(ax + (bx - ax) * t / steps);
+    const z = Math.round(az + (bz - az) * t / steps);
+    for (let j = z - 1; j <= z + 1; j++) {
+      for (let i = x - 1; i <= x + 1; i++) MAP[j][i] = " ";
+    }
+  }
+}
+const checkpoints = ROUTE.map(([x, z]) => ({
+  x: (x + 0.5) * CELL, z: (z + 0.5) * CELL,
+}));
+const START = checkpoints[0];
+const LOBBY_SPAWN = { x: -58, z: 15 };
+const BUTTON = { x: -34, z: 15, r: 1.8 };
 
-// Lobby button pad
-const BUTTON = { x: CX + 120, y: CY, r: 28 };
-const LOBBY_SPAWN = { x: CX - 60, y: CY };
-const TRACK_SPAWN = { x: CX + (OUTER_R + INNER_R) / 2, y: CY };
+// ---------- scene ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 40, 110);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 0.9));
+const sun = new THREE.DirectionalLight(0xfff2cc, 1.2);
+sun.position.set(cols * CELL * 0.5 + 30, 60, rows * CELL * 0.5 - 40);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+const span = Math.max(cols, rows) * CELL * 0.75;
+sun.shadow.camera.left = -span; sun.shadow.camera.right = span;
+sun.shadow.camera.top = span;  sun.shadow.camera.bottom = -span;
+sun.shadow.camera.far = 200;
+const sunTarget = new THREE.Object3D();
+sunTarget.position.set(cols * CELL / 2, 0, rows * CELL / 2);
+scene.add(sunTarget); sun.target = sunTarget;
+scene.add(sun);
+
+// Ground
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600),
+  new THREE.MeshLambertMaterial({ color: 0x3f9e4d })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.set(cols * CELL / 2, 0, rows * CELL / 2);
+ground.receiveShadow = true;
+scene.add(ground);
+
+const track = new THREE.Group();
+const lobby = new THREE.Group();
+scene.add(track, lobby);
+const trackWalls = [], lobbyWalls = [];
+const wallMat = new THREE.MeshLambertMaterial({ color: 0x8a5a2b });
+const wallTopMat = new THREE.MeshLambertMaterial({ color: 0xa9743c });
+function addWall(group, walls, x, z, width, depth) {
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(width, WALL_H, depth),
+    [wallMat, wallMat, wallTopMat, wallMat, wallMat, wallMat]
+  );
+  wall.position.set(x + width / 2, WALL_H / 2, z + depth / 2);
+  wall.castShadow = wall.receiveShadow = true;
+  group.add(wall);
+  walls.push({ minX: x, maxX: x + width, minZ: z, maxZ: z + depth });
+}
+const roadMat = new THREE.MeshLambertMaterial({ color: 0xb9a77a });
+for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+  if (MAP[j][i] === "x") {
+    const first = i;
+    while (i + 1 < cols && MAP[j][i + 1] === "x") i++;
+    addWall(track, trackWalls, first * CELL, j * CELL, (i - first + 1) * CELL, CELL);
+  } else {
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(CELL, CELL), roadMat);
+    tile.rotation.x = -Math.PI / 2;
+    tile.position.set((i + 0.5) * CELL, 0.015, (j + 0.5) * CELL);
+    tile.receiveShadow = true;
+    track.add(tile);
+  }
+}
+
+const padMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
+const pad = new THREE.Mesh(new THREE.BoxGeometry(CELL * 3, 0.1, 0.8), padMat);
+pad.position.set(START.x, 0.05, START.z);
+track.add(pad);
+
+addWall(lobby, lobbyWalls, -70, 0, 48, 1);
+addWall(lobby, lobbyWalls, -70, 29, 48, 1);
+addWall(lobby, lobbyWalls, -70, 1, 1, 28);
+addWall(lobby, lobbyWalls, -23, 1, 1, 28);
+const lobbyFloor = new THREE.Mesh(
+  new THREE.PlaneGeometry(46, 28),
+  new THREE.MeshLambertMaterial({ color: 0x394867 })
+);
+lobbyFloor.rotation.x = -Math.PI / 2;
+lobbyFloor.position.set(-46, 0.02, 15);
+lobbyFloor.receiveShadow = true;
+lobby.add(lobbyFloor);
+const buttonMat = new THREE.MeshLambertMaterial({ color: 0xc0392b });
+const button = new THREE.Mesh(new THREE.CylinderGeometry(BUTTON.r, BUTTON.r, 0.3, 32), buttonMat);
+button.position.set(BUTTON.x, 0.15, BUTTON.z);
+lobby.add(button);
+
+// Floor arrows mark the lap direction, including the turns.
+const arrowShape = new THREE.Shape();
+arrowShape.moveTo(0, -0.8);
+arrowShape.lineTo(-0.65, 0.4);
+arrowShape.lineTo(0.65, 0.4);
+arrowShape.closePath();
+const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+for (let n = 0; n < checkpoints.length; n++) {
+  const point = checkpoints[n], next = checkpoints[(n + 1) % checkpoints.length];
+  const arrow = new THREE.Mesh(arrowGeo, padMat);
+  arrow.rotation.set(-Math.PI / 2, 0, 0);
+  arrow.rotateZ(Math.atan2(next.x - point.x, next.z - point.z));
+  arrow.position.set(point.x, 0.03, point.z);
+  track.add(arrow);
+}
+
+// ---------- chicken ----------
+function buildChicken(color = 0xffffff) {
+  const g = new THREE.Group();
+  const white = new THREE.MeshLambertMaterial({ color });
+  const orange = new THREE.MeshLambertMaterial({ color: 0xff8c1a });
+  const red = new THREE.MeshLambertMaterial({ color: 0xd62828 });
+  const black = new THREE.MeshLambertMaterial({ color: 0x222222 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 16), white);
+  body.scale.set(0.9, 0.95, 1.15);
+  body.position.y = 0.8;
+  g.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 14), white);
+  head.position.set(0, 1.45, 0.45);
+  g.add(head);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 10), orange);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 1.45, 0.82);
+  g.add(beak);
+
+  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.34), red);
+  comb.position.set(0, 1.78, 0.42);
+  g.add(comb);
+
+  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), red);
+  wattle.position.set(0, 1.26, 0.68);
+  g.add(wattle);
+
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), black);
+    eye.position.set(0.16 * s, 1.52, 0.68);
+    g.add(eye);
+
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 12), white);
+    wing.scale.set(0.35, 0.65, 1);
+    wing.position.set(0.5 * s, 0.85, -0.05);
+    g.add(wing);
+
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 8), orange);
+    leg.position.set(0.2 * s, 0.22, 0);
+    g.add(leg);
+
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.3), orange);
+    foot.position.set(0.2 * s, 0.03, 0.06);
+    g.add(foot);
+  }
+
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), white);
+  tail.scale.set(0.7, 1.2, 0.7);
+  tail.position.set(0, 1.1, -0.6);
+  tail.rotation.x = -0.5;
+  g.add(tail);
+
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+const chicken = buildChicken();
+const rivalChicken = buildChicken(0xffc857);
+scene.add(chicken, rivalChicken);
+
+// ---------- state & input ----------
+const state = {
+  scene: "lobby", x: LOBBY_SPAWN.x, z: LOBBY_SPAWN.z,
+  yaw: Math.PI / 2, laps: 0, nextCheckpoint: 1, walk: 0,
+  countdown: 0, goTimer: 0,
+};
+const rival = { x: START.x, z: START.z, yaw: Math.PI, laps: 0, nextCheckpoint: 1, target: 1, walk: 0 };
+const hud = document.getElementById("hud");
+const message = document.getElementById("msg");
+const result = document.getElementById("result");
+const countdown = document.getElementById("countdown");
 
 const keys = {};
-addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
-addEventListener("keyup",   e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+  if (key.startsWith("arrow") || key === " ") e.preventDefault();
+  keys[key] = true;
+  if (e.repeat) return;
+  if (state.scene === "finished" && key === "enter") reset();
+  else if (state.scene === "lobby" && key === "e" && nearButton()) enterTrack();
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("blur", clearKeys);
+document.addEventListener("visibilitychange", () => { if (document.hidden) clearKeys(); });
 
-const state = {
-  scene: "lobby",          // "lobby" | "track" | "victory"
-  px: LOBBY_SPAWN.x,
-  py: LOBBY_SPAWN.y,
-  angle: 0,                // last angular position on track
-  accum: 0,                // accumulated angle (radians); 2π == 1 lap
-  victoryTimer: 0,
-};
+function clearKeys() {
+  for (const key of Object.keys(keys)) delete keys[key];
+}
 
 function nearButton() {
-  return Math.hypot(state.px - BUTTON.x, state.py - BUTTON.y) < BUTTON.r + PLAYER_R + 14;
+  return Math.hypot(state.x - BUTTON.x, state.z - BUTTON.z) < BUTTON.r + R + 1;
+}
+
+function setScene(sceneName, spawn, yaw) {
+  state.scene = sceneName;
+  state.x = spawn.x; state.z = spawn.z; state.yaw = yaw;
+  state.laps = 0; state.nextCheckpoint = 1; state.walk = 0;
+  state.countdown = 0; state.goTimer = 0;
+  Object.assign(rival, {
+    x: START.x + 1.2, z: START.z, yaw: Math.PI,
+    laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
+  });
+  track.visible = sceneName !== "lobby";
+  lobby.visible = sceneName === "lobby";
+  rivalChicken.visible = sceneName !== "lobby";
+  clearKeys();
+  message.style.display = "none";
+  countdown.style.display = "none";
+  camPos.set(state.x - Math.sin(yaw) * 6.5, 4.2, state.z - Math.cos(yaw) * 6.5);
 }
 
 function enterTrack() {
-  state.scene = "track";
-  state.px = TRACK_SPAWN.x;
-  state.py = TRACK_SPAWN.y;
-  state.angle = Math.atan2(state.py - CY, state.px - CX);
-  state.accum = 0;
+  setScene("countdown", { x: START.x - 1.2, z: START.z }, Math.PI);
+  state.countdown = 3;
+  countdown.textContent = "3";
+  countdown.style.display = "flex";
 }
 
-function backToLobby() {
-  state.scene = "lobby";
-  state.px = LOBBY_SPAWN.x;
-  state.py = LOBBY_SPAWN.y;
-  state.accum = 0;
+function reset() {
+  setScene("lobby", LOBBY_SPAWN, Math.PI / 2);
 }
 
-addEventListener("keydown", e => {
-  if (e.key.toLowerCase() === "e" && state.scene === "lobby" && nearButton()) enterTrack();
-});
+function finishRace(playerWon) {
+  state.scene = "finished";
+  clearKeys();
+  countdown.style.display = "none";
+  result.textContent = playerWon ? "VICTORY!" : "RIVAL WINS!";
+  message.style.display = "flex";
+}
 
-function move(dt) {
-  let dx = 0, dy = 0;
-  if (keys["w"]) dy -= 1; // forward
-  if (keys["s"]) dy += 1; // backward
-  if (keys["a"]) dx -= 1; // left
-  if (keys["d"]) dx += 1; // right
-  if (dx || dy) {
-    const len = Math.hypot(dx, dy);
-    state.px += (dx / len) * SPEED * dt;
-    state.py += (dy / len) * SPEED * dt;
+function updateLaps(racer, previousZ) {
+  const point = checkpoints[racer.nextCheckpoint];
+  if (Math.hypot(racer.x - point.x, racer.z - point.z) > CELL * 2) return;
+  if (racer.nextCheckpoint === 0) {
+    if (previousZ <= START.z || racer.z > START.z) return;
+    racer.laps++;
+    if (racer.laps === LAPS_TO_WIN) finishRace(racer === state);
   }
+  racer.nextCheckpoint = (racer.nextCheckpoint + 1) % checkpoints.length;
 }
 
-function clampLobbyWalls() {
-  state.px = Math.min(Math.max(state.px, WALL + PLAYER_R), W - WALL - PLAYER_R);
-  state.py = Math.min(Math.max(state.py, WALL + PLAYER_R), H - WALL - PLAYER_R);
-}
-
-function clampTrackWalls() {
-  // Keep the player inside the ring between inner and outer walls.
-  let dx = state.px - CX, dy = state.py - CY;
-  let d = Math.hypot(dx, dy) || 0.0001;
-  const minD = INNER_R + PLAYER_R, maxD = OUTER_R - PLAYER_R;
-  if (d < minD || d > maxD) {
-    const c = Math.min(Math.max(d, minD), maxD) / d;
-    state.px = CX + dx * c;
-    state.py = CY + dy * c;
+function moveRival(dt) {
+  const target = checkpoints[rival.target];
+  const dx = target.x - rival.x, dz = target.z - rival.z;
+  const distance = Math.hypot(dx, dz);
+  const step = Math.min(RIVAL_SPEED * dt, distance);
+  const previousZ = rival.z;
+  if (distance > 0) {
+    rival.yaw = Math.atan2(dx, dz);
+    [rival.x, rival.z] = collide(rival.x + dx / distance * step, rival.z + dz / distance * step);
   }
-}
-
-function updateLaps() {
-  const a = Math.atan2(state.py - CY, state.px - CX);
-  let delta = a - state.angle;
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
-  state.accum += delta;
-  state.angle = a;
-  if (Math.abs(state.accum) >= LAPS_TO_WIN * 2 * Math.PI) {
-    state.scene = "victory";
-    state.victoryTimer = 2.5;
+  if (Math.hypot(target.x - rival.x, target.z - rival.z) < 0.001) {
+    rival.target = (rival.target + 1) % checkpoints.length;
   }
+  updateLaps(rival, previousZ);
+  rival.walk += dt * 11;
 }
 
-function update(dt) {
-  if (state.scene === "lobby") {
-    move(dt);
-    clampLobbyWalls();
-  } else if (state.scene === "track") {
-    move(dt);
-    clampTrackWalls();
-    updateLaps();
-  } else if (state.scene === "victory") {
-    state.victoryTimer -= dt;
-    if (state.victoryTimer <= 0) backToLobby();
+function collide(px, pz) {
+  for (const wall of state.scene === "lobby" ? lobbyWalls : trackWalls) {
+    const cx = Math.max(wall.minX, Math.min(px, wall.maxX));
+    const cz = Math.max(wall.minZ, Math.min(pz, wall.maxZ));
+    const dx = px - cx, dz = pz - cz;
+    const d = Math.hypot(dx, dz);
+    if (d >= R) continue;
+    if (d > 0) {
+      px = cx + dx / d * R; pz = cz + dz / d * R;
+    } else {
+      const exits = [
+        { distance: px - wall.minX, x: wall.minX - R, z: pz },
+        { distance: wall.maxX - px, x: wall.maxX + R, z: pz },
+        { distance: pz - wall.minZ, x: px, z: wall.minZ - R },
+        { distance: wall.maxZ - pz, x: px, z: wall.maxZ + R },
+      ];
+      exits.sort((a, b) => a.distance - b.distance);
+      px = exits[0].x; pz = exits[0].z;
+    }
   }
+  return [px, pz];
 }
 
-// ---------- drawing ----------
+const camPos = new THREE.Vector3(START.x, 5, START.z + 7);
+reset();
 
-function drawWallsRect() {
-  ctx.fillStyle = "#533483";
-  ctx.fillRect(0, 0, W, WALL);
-  ctx.fillRect(0, H - WALL, W, WALL);
-  ctx.fillRect(0, 0, WALL, H);
-  ctx.fillRect(W - WALL, 0, WALL, H);
-}
-
-function drawPlayer() {
-  ctx.beginPath();
-  ctx.arc(state.px, state.py, PLAYER_R, 0, Math.PI * 2);
-  ctx.fillStyle = "#f9ed69";
-  ctx.fill();
-  ctx.strokeStyle = "#b08968";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.font = "22px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("🐔", state.px, state.py + 1);
-}
-
-function drawLobby() {
-  ctx.fillStyle = "#16213e";
-  ctx.fillRect(0, 0, W, H);
-  drawWallsRect();
-
-  // Button pad
-  ctx.beginPath();
-  ctx.arc(BUTTON.x, BUTTON.y, BUTTON.r + 8, 0, Math.PI * 2);
-  ctx.fillStyle = "#394867";
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(BUTTON.x, BUTTON.y, BUTTON.r, 0, Math.PI * 2);
-  ctx.fillStyle = nearButton() ? "#ff4757" : "#c0392b";
-  ctx.fill();
-
-  ctx.fillStyle = "#e0e0e0";
-  ctx.font = "18px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("Move with W A S D", CX, 70);
-  if (nearButton()) {
-    ctx.fillStyle = "#f9ed69";
-    ctx.font = "bold 22px sans-serif";
-    ctx.fillText("Press E to race!", BUTTON.x, BUTTON.y - BUTTON.r - 24);
+function update(dt, elapsed = dt) {
+  let moving = false;
+  const previousZ = state.z;
+  if (state.scene === "countdown") {
+    state.countdown = Math.max(0, state.countdown - elapsed);
+    countdown.textContent = String(Math.ceil(state.countdown));
+    if (state.countdown === 0) {
+      state.scene = "track";
+      state.goTimer = 0.7;
+    }
+    // Neither racer gets movement from time spent in the countdown.
+    dt = 0;
+  } else if (state.goTimer > 0) {
+    state.goTimer = Math.max(0, state.goTimer - elapsed);
+    if (state.goTimer === 0) countdown.style.display = "none";
   }
-  drawPlayer();
-}
+  if (state.scene === "lobby" || state.scene === "track") {
+    if (keys["a"] || keys["arrowleft"])  state.yaw += TURN * dt;
+    if (keys["d"] || keys["arrowright"]) state.yaw -= TURN * dt;
+    let fwd = 0;
+    if (keys["w"] || keys["arrowup"])   fwd += 1;
+    if (keys["s"] || keys["arrowdown"]) fwd -= 1;
+    if (fwd) {
+      moving = true;
+      const dx = Math.sin(state.yaw) * fwd * SPEED * dt;
+      const dz = Math.cos(state.yaw) * fwd * SPEED * dt;
+      [state.x, state.z] = collide(state.x + dx, state.z);
+      [state.x, state.z] = collide(state.x, state.z + dz);
+    }
 
-function drawTrack() {
-  ctx.fillStyle = "#0f3460";
-  ctx.fillRect(0, 0, W, H);
+    if (state.scene === "track") {
+      updateLaps(state, previousZ);
+      if (state.scene === "track") moveRival(dt);
+    }
+  }
+  buttonMat.color.setHex(nearButton() ? 0xff4757 : 0xc0392b);
+  hud.textContent = state.scene === "lobby"
+    ? `W/S move | A/D turn | ${nearButton() ? "Press E to race!" : "Walk to the red button to race"}`
+    : `You: ${state.laps} / ${LAPS_TO_WIN} laps | Gold rival: ${rival.laps} / ${LAPS_TO_WIN} laps | W/S move | A/D turn | Follow the arrows`;
 
-  // Road
-  ctx.beginPath();
-  ctx.arc(CX, CY, OUTER_R, 0, Math.PI * 2);
-  ctx.fillStyle = "#3d3d3d";
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(CX, CY, INNER_R, 0, Math.PI * 2);
-  ctx.fillStyle = "#2e8b57";
-  ctx.fill();
+  // Animate chicken
+  state.walk = moving ? state.walk + dt * 11 : 0;
+  chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
+  chicken.rotation.y = state.yaw;
+  chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
+  const rivalMoving = state.scene === "track" && dt > 0;
+  rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
+  rivalChicken.rotation.y = rival.yaw;
+  rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
 
-  // Walls
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = "#e94560";
-  ctx.beginPath();
-  ctx.arc(CX, CY, OUTER_R + 4, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(CX, CY, INNER_R - 4, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Start/finish line
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 6;
-  ctx.setLineDash([10, 8]);
-  ctx.beginPath();
-  ctx.moveTo(CX + INNER_R, CY);
-  ctx.lineTo(CX + OUTER_R, CY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // HUD
-  const lap = Math.min(Math.floor(Math.abs(state.accum) / (2 * Math.PI)) + 1, LAPS_TO_WIN);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 26px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(`Lap ${lap} / ${LAPS_TO_WIN}`, CX, 40);
-
-  drawPlayer();
-}
-
-function drawVictory() {
-  drawTrack();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#f9ed69";
-  ctx.font = "bold 80px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("VICTORY", CX, CY);
+  // Third-person camera behind the chicken
+  const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
+  const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
+  target.y = 4.2;
+  camPos.lerp(target, 1 - Math.pow(0.0001, dt));
+  camera.position.copy(camPos);
+  camera.lookAt(state.x, 1.6, state.z);
 }
 
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  const elapsed = (now - last) / 1000;
+  const dt = Math.min(elapsed, 0.05);
   last = now;
-  update(dt);
-  if (state.scene === "lobby") drawLobby();
-  else if (state.scene === "track") drawTrack();
-  else drawVictory();
+  update(dt, elapsed);
+  renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
