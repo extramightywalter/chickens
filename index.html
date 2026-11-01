@@ -7,10 +7,24 @@
 </head>
 <body>
 <div id="hud"></div>
+<div id="rival-indicator" aria-hidden="true">
+  <span class="arrow"></span>
+  <svg class="avatar" viewBox="0 0 64 64">
+    <path d="M22 14c-2-7 1-10 5-6l4 4c3-7 7-7 8-1l1 4c8 2 13 9 13 18v12H15V31c0-8 3-14 7-17Z" fill="#e53935"/>
+    <path d="M15 30 5 38l10 5m38-13 6 8-6 5" fill="#a71919" stroke="#a71919" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M48 22h10l-8 6" fill="#ffb02e"/>
+    <circle cx="27" cy="21" r="2" fill="#fff"/><circle cx="41" cy="21" r="2" fill="#fff"/>
+    <path d="M25 47v9m18-9v9m-18 0-5 3m23-3 5 3" fill="none" stroke="#e9a23b" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <span class="label">RIVAL</span>
+</div>
 <div id="countdown" role="status" aria-live="polite"></div>
 <div id="msg"><span id="result">VICTORY</span><small>Press Enter to return to the lobby</small></div>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
 </script>
 <script type="module" src="./js/main.js"></script>
 </body>

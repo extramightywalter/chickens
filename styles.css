@@ -6,6 +6,25 @@ canvas { display: block; }
   background: rgba(0,0,0,.35); padding: 8px 16px; border-radius: 8px;
   pointer-events: none; width: max-content; max-width: 90%; text-align: center;
 }
+#rival-indicator {
+  position: fixed; display: none; align-items: center; gap: 5px;
+  transform: translate(-50%, -50%); color: #fff; font: bold 13px sans-serif;
+  text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 2;
+}
+#rival-indicator .avatar {
+  display: block; width: 54px; height: 54px; flex: none;
+  padding: 3px; border-radius: 50%; background: rgba(0,0,0,.7);
+  border: 2px solid #e53935;
+}
+#rival-indicator .label {
+  padding: 4px 7px; border-radius: 5px; background: rgba(0,0,0,.5);
+}
+#rival-indicator .arrow {
+  display: none; width: 0; height: 0;
+  border-top: 7px solid transparent; border-bottom: 7px solid transparent;
+  border-left: 12px solid #e53935; transform: rotate(var(--arrow-angle));
+}
+#rival-indicator.offscreen .arrow { display: block; }
 #msg {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   flex-direction: column; background: rgba(0,0,0,.6); color: #f9ed69;

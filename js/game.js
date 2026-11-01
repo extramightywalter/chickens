@@ -37,7 +37,7 @@ export function createGame() {
       countdown: 0, goTimer: 0, playerWon: null,
     });
     Object.assign(rival, {
-      x: START.x + 1.2, z: START.z, yaw: Math.PI,
+      x: START.x + 1.6, z: START.z, yaw: Math.PI,
       laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
     });
   }
@@ -47,7 +47,7 @@ export function createGame() {
   }
 
   function enterTrack() {
-    setScene("countdown", { x: START.x - 1.2, z: START.z }, Math.PI);
+    setScene("countdown", { x: START.x - 1.6, z: START.z }, Math.PI);
     state.countdown = 3;
   }
 

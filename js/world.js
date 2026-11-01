@@ -1,65 +1,34 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addPaintings } from "./paintings.js";
 import {
   BUTTON, CELL, MAP, START, WALL_H, checkpoints, cols, lobbyWalls, rows, trackWalls,
 } from "./track.js";
 
-function buildChicken(color = 0xffffff) {
-  const g = new THREE.Group();
-  const white = new THREE.MeshLambertMaterial({ color });
-  const orange = new THREE.MeshLambertMaterial({ color: 0xff8c1a });
-  const red = new THREE.MeshLambertMaterial({ color: 0xd62828 });
-  const black = new THREE.MeshLambertMaterial({ color: 0x222222 });
+const CHICKEN_YAW_OFFSET = Math.PI;
+const RIVAL_COLORS = {
+  "_defaultMat(Clone)": 0xd62828,
+  "dark(Clone)": 0x641010,
+};
 
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 16), white);
-  body.scale.set(0.9, 0.95, 1.15);
-  body.position.y = 0.8;
-  g.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 14), white);
-  head.position.set(0, 1.45, 0.45);
-  g.add(head);
-
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 10), orange);
-  beak.rotation.x = Math.PI / 2;
-  beak.position.set(0, 1.45, 0.82);
-  g.add(beak);
-
-  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.34), red);
-  comb.position.set(0, 1.78, 0.42);
-  g.add(comb);
-
-  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), red);
-  wattle.position.set(0, 1.26, 0.68);
-  g.add(wattle);
-
-  for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), black);
-    eye.position.set(0.16 * s, 1.52, 0.68);
-    g.add(eye);
-
-    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 12), white);
-    wing.scale.set(0.35, 0.65, 1);
-    wing.position.set(0.5 * s, 0.85, -0.05);
-    g.add(wing);
-
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 8), orange);
-    leg.position.set(0.2 * s, 0.22, 0);
-    g.add(leg);
-
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.3), orange);
-    foot.position.set(0.2 * s, 0.03, 0.06);
-    g.add(foot);
-  }
-
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), white);
-  tail.scale.set(0.7, 1.2, 0.7);
-  tail.position.set(0, 1.1, -0.6);
-  tail.rotation.x = -0.5;
-  g.add(tail);
-
-  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  return g;
+function createChicken(model, rival = false) {
+  const chicken = model.clone(true);
+  chicken.scale.setScalar(0.7);
+  chicken.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    if (rival) {
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const rivalMaterials = materials.map(material => {
+        const clone = material.clone();
+        const color = RIVAL_COLORS[clone.name];
+        if (color !== undefined) clone.color.setHex(color);
+        return clone;
+      });
+      object.material = Array.isArray(object.material) ? rivalMaterials : rivalMaterials[0];
+    }
+  });
+  return chicken;
 }
 
 export async function createWorld() {
@@ -164,10 +133,15 @@ export async function createWorld() {
     track.add(arrow);
   }
 
-  const chicken = buildChicken();
-  const rivalChicken = buildChicken(0xffc857);
+  const { scene: chickenModel } = await new GLTFLoader().loadAsync(
+    new URL("../chicken.glb", import.meta.url).href
+  );
+  const chicken = createChicken(chickenModel);
+  const rivalChicken = createChicken(chickenModel, true);
   scene.add(chicken, rivalChicken);
   const camPos = new THREE.Vector3();
+  const rivalIndicator = document.getElementById("rival-indicator");
+  const cameraDirection = new THREE.Vector3();
 
   function resetCamera(state) {
     camPos.set(
@@ -183,11 +157,11 @@ export async function createWorld() {
     buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
 
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
-    chicken.rotation.y = state.yaw;
+    chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
     chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
     const rivalMoving = state.scene === "track" && dt > 0;
     rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
-    rivalChicken.rotation.y = rival.yaw;
+    rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
 
     const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
@@ -196,6 +170,25 @@ export async function createWorld() {
     camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
     camera.lookAt(state.x, 1.6, state.z);
+    rivalIndicator.style.display = state.scene === "lobby" ? "none" : "flex";
+    if (state.scene !== "lobby") {
+      const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
+      camera.getWorldDirection(cameraDirection);
+      const behind = direction.dot(cameraDirection) < 0;
+      const point = new THREE.Vector3(rival.x, 2.2, rival.z).project(camera);
+      if (behind) {
+        point.x = -point.x;
+        point.y = -point.y;
+      }
+      const onScreen = !behind && point.z >= -1 && point.z <= 1 &&
+        point.x >= -0.9 && point.x <= 0.9 && point.y >= -0.85 && point.y <= 0.85;
+      const x = Math.max(28, Math.min(innerWidth - 28, (point.x * 0.5 + 0.5) * innerWidth));
+      const y = Math.max(28, Math.min(innerHeight - 28, (-point.y * 0.5 + 0.5) * innerHeight));
+      rivalIndicator.classList.toggle("offscreen", !onScreen);
+      rivalIndicator.style.left = `${x}px`;
+      rivalIndicator.style.top = `${y}px`;
+      rivalIndicator.style.setProperty("--arrow-angle", `${Math.atan2(-point.y, point.x)}rad`);
+    }
     renderer.render(scene, camera);
   }
 

@@ -48,6 +48,9 @@ test("movement and turning retain WASD and arrow key controls", () => {
 test("countdown uses elapsed time and grants neither racer a head start", () => {
   const game = createGame();
   game.enterTrack();
+  assert.equal(game.state.x, START.x - 1.6);
+  assert.equal(game.rival.x, START.x + 1.6);
+  assert.equal(game.rival.z, game.state.z);
   const playerZ = game.state.z, rivalZ = game.rival.z;
   game.update(0.05, 1, { w: true });
   assert.equal(game.state.countdown, 2);
