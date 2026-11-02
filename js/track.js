@@ -54,15 +54,16 @@ export const LOBBY_CELL_DEPTH = (LOBBY_BOUNDS.maxZ - LOBBY_BOUNDS.minZ) / LOBBY_
 
 const LOBBY_STRUCTURE_TYPES = {
   x: {
-    type: "house", asset: "../assets/models/home.glb", width: 1.728000164, depth: 1.8472936,
+    type: "house", asset: "../assets/models/home (2).glb", width: 2.53704023, depth: 3.121926,
   },
   y: {
     type: "lobby", asset: "../assets/models/lobby.glb", width: 3.9, depth: 5.035,
     entranceWidth: 1.17, entranceRotation: Math.PI,
   },
   z: {
-    type: "shop", asset: "../assets/models/giant-building.glb", width: 8.5856, depth: 7.55700434,
-    scaleMultiplier: 3, offsetX: 4,
+    type: "shop", asset: "../assets/models/giant-building.glb", width: 8.5856, depth: 7.0548004,
+    // The model's north arch is left of center and wider than the default doorway.
+    scaleMultiplier: 3, offsetX: 4, entranceWidth: 3.42, entranceOffsetX: -0.71,
   },
 };
 
@@ -80,17 +81,18 @@ export const lobbyStructures = LOBBY_MAP.flatMap((line, row) =>
     if (!structure) return [];
     const position = lobbyCellPosition(column, row);
     const scale = LOBBY_BUILDING_WIDTH / structure.width * (structure.scaleMultiplier ?? 1);
-    const side = key === "x" ? (row < 3 ? "north" : "south") :
+    const side = key === "x" ? (row < 3 ? "south" : "north") :
       key === "y" ? "west" : "south";
     const modelWidth = structure.width * scale, modelDepth = structure.depth * scale;
     const rotated = side === "west" || side === "east";
     return [{
       ...structure, ...position, x: position.x + (structure.offsetX ?? 0), key, scale,
       id: `${structure.type}-${structureIndex++}`,
-      entranceSide: structure.type === "house" ? (side === "north" ? "south" : "north") :
+      entranceSide: structure.type === "house" ? side :
         structure.type === "shop" ? "north" : side,
       entranceWidth: structure.entranceWidth ? scale * structure.entranceWidth :
         Math.max(2.8, scale * 0.55),
+      entranceOffsetX: scale * (structure.entranceOffsetX ?? 0),
       rotation: { south: 0, west: -Math.PI / 2, north: Math.PI, east: Math.PI / 2 }[side] +
         (structure.entranceRotation ?? 0),
       modelWidth, modelDepth,
@@ -112,7 +114,7 @@ function entrancePoint(structure) {
   const { x, z, width, depth, entranceSide } = structure;
   return {
     x: entranceSide === "west" ? x - width / 2 :
-      entranceSide === "east" ? x + width / 2 : x,
+      entranceSide === "east" ? x + width / 2 : x + (structure.entranceOffsetX ?? 0),
     z: entranceSide === "north" ? z - depth / 2 :
       entranceSide === "south" ? z + depth / 2 : z,
   };
@@ -123,48 +125,36 @@ function wall(minX, maxX, minZ, maxZ) {
 
 export const lobbyEntrances = lobbyStructures.map(structure => ({
   ...structure, ...entrancePoint(structure),
-  hasDoor: structure.type === "house" || structure.type === "shop",
 }));
 
-export const lobbyDoorWalls = lobbyEntrances.filter(({ hasDoor }) => hasDoor).map(door => {
-  const { x, z, entranceWidth, entranceSide } = door;
-  const halfOpening = entranceWidth / 2;
-  if (entranceSide === "north" || entranceSide === "south") {
-    const faceZ = entranceSide === "north" ? z : z - LOBBY_WALL_THICKNESS;
-    return wall(x - halfOpening, x + halfOpening, faceZ, faceZ + LOBBY_WALL_THICKNESS);
-  }
-  const faceX = entranceSide === "west" ? x : x - LOBBY_WALL_THICKNESS;
-  return wall(faceX, faceX + LOBBY_WALL_THICKNESS, z - halfOpening, z + halfOpening);
-});
-export const lobbyDoors = lobbyEntrances.filter(({ hasDoor }) => hasDoor).map((door, index) => ({
-  ...door, wall: lobbyDoorWalls[index],
-}));
-
-export const lobbyWalls = lobbyStructures.flatMap(structure => {
-  const { x, z, width, depth, entranceSide, entranceWidth } = structure;
-  const minX = x - width / 2, maxX = x + width / 2;
-  const minZ = z - depth / 2, maxZ = z + depth / 2;
-  const halfOpening = entranceWidth / 2;
-  const walls = [];
-  if (entranceSide === "north" || entranceSide === "south") {
-    const faceZ = entranceSide === "north" ? minZ : maxZ - LOBBY_WALL_THICKNESS;
-    walls.push(
-      wall(minX, x - halfOpening, faceZ, faceZ + LOBBY_WALL_THICKNESS),
-      wall(x + halfOpening, maxX, faceZ, faceZ + LOBBY_WALL_THICKNESS)
-    );
-  } else {
-    const faceX = entranceSide === "west" ? minX : maxX - LOBBY_WALL_THICKNESS;
-    walls.push(
-      wall(faceX, faceX + LOBBY_WALL_THICKNESS, minZ, z - halfOpening),
-      wall(faceX, faceX + LOBBY_WALL_THICKNESS, z + halfOpening, maxZ)
-    );
-  }
-  if (entranceSide !== "west") walls.push(wall(minX, minX + LOBBY_WALL_THICKNESS, minZ, maxZ));
-  if (entranceSide !== "east") walls.push(wall(maxX - LOBBY_WALL_THICKNESS, maxX, minZ, maxZ));
-  if (entranceSide !== "north") walls.push(wall(minX, maxX, minZ, minZ + LOBBY_WALL_THICKNESS));
-  if (entranceSide !== "south") walls.push(wall(minX, maxX, maxZ - LOBBY_WALL_THICKNESS, maxZ));
-  return walls;
-});
+export const lobbyWalls = lobbyStructures
+  .filter(({ type }) => type === "house" || type === "shop")
+  .flatMap(structure => {
+    const { x, z, width, depth, entranceSide, entranceWidth } = structure;
+    const minX = x - width / 2, maxX = x + width / 2;
+    const minZ = z - depth / 2, maxZ = z + depth / 2;
+    const entranceX = x + (structure.entranceOffsetX ?? 0);
+    const halfOpening = entranceWidth / 2;
+    const walls = [];
+    if (entranceSide === "north" || entranceSide === "south") {
+      const faceZ = entranceSide === "north" ? minZ : maxZ - LOBBY_WALL_THICKNESS;
+      walls.push(
+        wall(minX, entranceX - halfOpening, faceZ, faceZ + LOBBY_WALL_THICKNESS),
+        wall(entranceX + halfOpening, maxX, faceZ, faceZ + LOBBY_WALL_THICKNESS)
+      );
+    } else {
+      const faceX = entranceSide === "west" ? minX : maxX - LOBBY_WALL_THICKNESS;
+      walls.push(
+        wall(faceX, faceX + LOBBY_WALL_THICKNESS, minZ, z - halfOpening),
+        wall(faceX, faceX + LOBBY_WALL_THICKNESS, z + halfOpening, maxZ)
+      );
+    }
+    if (entranceSide !== "west") walls.push(wall(minX, minX + LOBBY_WALL_THICKNESS, minZ, maxZ));
+    if (entranceSide !== "east") walls.push(wall(maxX - LOBBY_WALL_THICKNESS, maxX, minZ, maxZ));
+    if (entranceSide !== "north") walls.push(wall(minX, maxX, minZ, minZ + LOBBY_WALL_THICKNESS));
+    if (entranceSide !== "south") walls.push(wall(minX, maxX, maxZ - LOBBY_WALL_THICKNESS, maxZ));
+    return walls;
+  });
 
 export const PAINTINGS = [
   { x: 103, z: 10, yaw: 0 },

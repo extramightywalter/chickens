@@ -19,7 +19,22 @@
   <span class="label">RIVAL</span>
 </div>
 <div id="countdown" role="status" aria-live="polite"></div>
-<div id="msg"><span id="result">VICTORY</span><small>Press Enter to return to the lobby</small></div>
+<div id="msg"><span id="result">VICTORY</span><small>Press Enter to return to the button</small></div>
+<div id="game-menu" class="menu-overlay" hidden>
+  <section class="menu-panel" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <h1 id="menu-title">Choose a minigame</h1>
+    <div id="menu-options" class="menu-options">
+      <button id="random-minigame" type="button">Random</button>
+      <button id="choose-minigame" type="button">Choose minigame</button>
+    </div>
+    <div id="minigame-options" class="menu-options" hidden>
+      <button type="button" data-minigame="track">Race</button>
+      <button type="button" data-minigame="pillows">Pillow Dodge</button>
+      <button id="back-to-menu" type="button">Back</button>
+    </div>
+    <button id="close-menu" class="menu-cancel" type="button">Cancel</button>
+  </section>
+</div>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",

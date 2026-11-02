@@ -74,3 +74,19 @@ test("countdown beeps and both racers squawk only during the race", () => {
     else globalThis.window = previousWindow;
   }
 });
+
+test("pillow rounds use the same start and chicken sounds", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { AudioContext: FakeAudioContext };
+  try {
+    const sounds = createSoundEffects();
+    sounds.startRace();
+    const context = FakeAudioContext.instance;
+    sounds.updateRace("pillows", 61);
+    assert.equal(context.sources, 1);
+    assert.equal(context.oscillators, 5);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

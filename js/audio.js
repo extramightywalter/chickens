@@ -121,7 +121,7 @@ export function createSoundEffects() {
   }
 
   function updateRace(scene, elapsed) {
-    if (scene !== "track") return;
+    if (scene !== "track" && scene !== "pillows") return;
     playerSquawkIn -= elapsed;
     rivalSquawkIn -= elapsed;
     if (playerSquawkIn <= 0) {

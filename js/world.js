@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addPaintings } from "./paintings.js";
+import { ARENA, CANNONS, CANNON_MUZZLE, PILLOW_RADIUS, arenaWalls } from "./pillows.js";
 import {
   BUTTON, CELL, CHICKEN_SCALE, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
   START, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows, trackWalls,
@@ -80,7 +81,25 @@ export async function createWorld() {
 
   const track = new THREE.Group();
   const lobby = new THREE.Group();
-  scene.add(track, lobby);
+  const arena = new THREE.Group();
+  scene.add(track, lobby, arena);
+  const arenaFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(ARENA.maxX - ARENA.minX, ARENA.maxZ - ARENA.minZ),
+    new THREE.MeshLambertMaterial({ color: 0x527bac })
+  );
+  arenaFloor.rotation.x = -Math.PI / 2;
+  arenaFloor.position.y = 0.025;
+  arenaFloor.receiveShadow = true;
+  arena.add(arenaFloor);
+  const railMaterial = new THREE.MeshLambertMaterial({ color: 0xf9ed69 });
+  for (const wall of arenaWalls) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(wall.maxX - wall.minX, 0.25, wall.maxZ - wall.minZ),
+      railMaterial
+    );
+    rail.position.set((wall.minX + wall.maxX) / 2, 0.125, (wall.minZ + wall.maxZ) / 2);
+    arena.add(rail);
+  }
   const wallMat = new THREE.MeshLambertMaterial({ color: 0x8a5a2b });
   const wallTopMat = new THREE.MeshLambertMaterial({ color: 0xa9743c });
   function addWall(group, wall) {
@@ -118,9 +137,74 @@ export async function createWorld() {
     }
   }
   const loader = new GLTFLoader();
+  const { scene: cannonModel } = await loader.loadAsync(
+    new URL("../assets/models/cannon.glb", import.meta.url).href
+  );
+  const cannonBounds = new THREE.Box3().setFromObject(cannonModel);
+  const cannonCenter = cannonBounds.getCenter(new THREE.Vector3());
+  const cannonScale = 2.4 / cannonBounds.getSize(new THREE.Vector3()).z;
+  cannonModel.scale.setScalar(cannonScale);
+  cannonModel.position.set(
+    -cannonCenter.x * cannonScale, -cannonBounds.min.y * cannonScale,
+    -cannonCenter.z * cannonScale
+  );
+  cannonModel.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = object.receiveShadow = true;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (material.name === "_defaultMat(Clone)") material.color.setHex(0x536375);
+    }
+  });
+  const cannons = CANNONS.map(({ x, z }) => {
+    const cannon = new THREE.Group();
+    cannon.add(cannonModel.clone(true));
+    const barrelMaterial = new THREE.MeshLambertMaterial({ color: 0x78889b, side: THREE.DoubleSide });
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 1.8, 20, 1, true), barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.95, CANNON_MUZZLE - 0.9);
+    barrel.castShadow = true;
+    cannon.add(barrel);
+    const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.09, 8, 20), barrelMaterial);
+    muzzle.position.set(0, 0.95, CANNON_MUZZLE);
+    cannon.add(muzzle);
+    const bore = new THREE.Mesh(
+      new THREE.CircleGeometry(0.43, 20),
+      new THREE.MeshLambertMaterial({ color: 0x10151c })
+    );
+    bore.position.set(0, 0.95, CANNON_MUZZLE - 0.15);
+    cannon.add(bore);
+    for (const side of [-1, 1]) {
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.6, 0.25, 16),
+        new THREE.MeshLambertMaterial({ color: 0x68472c })
+      );
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(side * 1.1, 0.6, -0.3);
+      wheel.castShadow = true;
+      cannon.add(wheel);
+    }
+    cannon.position.set(x, 0, z);
+    arena.add(cannon);
+    return cannon;
+  });
+  const { scene: pillowModel } = await loader.loadAsync(
+    new URL("../pillow.glb", import.meta.url).href
+  );
+  const pillowBounds = new THREE.Box3().setFromObject(pillowModel);
+  const pillowSize = pillowBounds.getSize(new THREE.Vector3());
+  const pillowScale = PILLOW_RADIUS * 2 / Math.max(pillowSize.x, pillowSize.z);
+  const pillowCenter = pillowBounds.getCenter(new THREE.Vector3());
+  pillowModel.position.copy(pillowCenter).multiplyScalar(-pillowScale);
+  pillowModel.scale.setScalar(pillowScale);
+  const bluePillowMaterial = new THREE.MeshLambertMaterial({ color: 0x1675ff });
+  pillowModel.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.material = bluePillowMaterial;
+  });
+  const pillowMeshes = new Map();
   let lobbyStructure;
-  const doors = new Map();
-  const doorMat = new THREE.MeshLambertMaterial({ color: 0x68401f });
   await Promise.all(lobbyStructures.map(async structure => {
     const { scene: model } = await loader.loadAsync(
       new URL(structure.asset, import.meta.url).href
@@ -140,27 +224,6 @@ export async function createWorld() {
     structureGroup.add(model);
     lobby.add(structureGroup);
     if (structure.type === "lobby") lobbyStructure = structureGroup;
-    if (structure.type === "house" || structure.type === "shop") {
-      const { entranceSide, entranceWidth, modelDepth, rotation, scale } = structure;
-      const thickness = 0.18;
-      const doorHeight = Math.min(5, scale * 0.65);
-      const side = entranceSide === "south" ? 1 : -1;
-      const pivot = new THREE.Group();
-      const leaf = new THREE.Mesh(
-        new THREE.BoxGeometry(entranceWidth, doorHeight, thickness), doorMat
-      );
-      leaf.position.y = doorHeight / 2;
-      leaf.position.x = entranceWidth / 2;
-      leaf.castShadow = true;
-      leaf.receiveShadow = true;
-      pivot.position.set(
-        -entranceWidth / 2, 0,
-        side * Math.cos(rotation) * (modelDepth / 2 - thickness / 2)
-      );
-      pivot.add(leaf);
-      structureGroup.add(pivot);
-      doors.set(structure.id, { pivot, openRotation: Math.PI / 2 });
-    }
   }));
 
   const padMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
@@ -200,6 +263,11 @@ export async function createWorld() {
   const cameraDirection = new THREE.Vector3();
 
   function resetCamera(state) {
+    if (state.minigame === "pillows") {
+      const height = Math.max(26, 22 / camera.aspect);
+      camPos.set(0, height, height * 0.55);
+      return;
+    }
     camPos.set(
       state.x - Math.sin(state.yaw) * 6.5, 4.2,
       state.z - Math.cos(state.yaw) * 6.5
@@ -207,18 +275,38 @@ export async function createWorld() {
   }
 
   function render(state, rival, dt, moving, nearButton) {
-    track.visible = state.scene !== "lobby";
+    const pillowGame = state.minigame === "pillows";
+    track.visible = state.scene !== "lobby" && !pillowGame;
     lobby.visible = state.scene === "lobby";
+    arena.visible = pillowGame;
+    if (pillowGame) cannons.forEach((cannon, index) => {
+      cannon.rotation.y = state.cannonYaws[index];
+    });
     rivalChicken.visible = state.scene !== "lobby";
-    buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
-    for (const [id, { pivot, openRotation }] of doors) {
-      pivot.rotation.y = state.openDoors.includes(id) ? openRotation : 0;
+    const activePillows = new Set(state.pillows.map(pillow => pillow.id));
+    for (const [id, mesh] of pillowMeshes) {
+      if (activePillows.has(id)) continue;
+      arena.remove(mesh);
+      pillowMeshes.delete(id);
     }
+    for (const pillow of state.pillows) {
+      let mesh = pillowMeshes.get(pillow.id);
+      if (!mesh) {
+        mesh = new THREE.Group();
+        mesh.add(pillowModel.clone(true));
+        pillowMeshes.set(pillow.id, mesh);
+        arena.add(mesh);
+      }
+      mesh.position.set(pillow.x, 0.95, pillow.z);
+      mesh.rotation.set(0.15, Math.atan2(pillow.vx, pillow.vz), 0);
+    }
+    buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
 
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
     chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
-    const rivalMoving = state.scene === "track" && dt > 0 && rival.controls.forward !== 0;
+    const rivalMoving = (state.scene === "track" || state.scene === "pillows") &&
+      dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
@@ -226,11 +314,16 @@ export async function createWorld() {
     const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
     const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
     target.y = 4.2;
+    if (pillowGame) {
+      const height = Math.max(26, 22 / camera.aspect);
+      target.set(0, height, height * 0.55);
+    }
     camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
-    camera.lookAt(state.x, 1.6, state.z);
-    rivalIndicator.style.display = state.scene === "lobby" ? "none" : "flex";
-    if (state.scene !== "lobby") {
+    if (pillowGame) camera.lookAt(0, 0, 0);
+    else camera.lookAt(state.x, 1.6, state.z);
+    rivalIndicator.style.display = state.scene === "lobby" || pillowGame ? "none" : "flex";
+    if (state.scene !== "lobby" && !pillowGame) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
       camera.getWorldDirection(cameraDirection);
       const behind = direction.dot(cameraDirection) < 0;

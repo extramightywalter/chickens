@@ -1,7 +1,8 @@
 import {
   BUTTON, CELL, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
-  checkpoints, lobbyDoors, lobbyWalls, trackWalls,
+  checkpoints, lobbyWalls, trackWalls,
 } from "./track.js";
+import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 
 export function collide(px, pz, walls) {
   for (const wall of walls) {
@@ -37,18 +38,20 @@ function moveRacer(racer, dt, forward, turn, speed, walls) {
 export function createGame({ random = Math.random } = {}) {
   const state = {};
   const rival = {};
+  const pillowRound = createPillowRound(random);
   let driver;
 
   function setScene(scene, spawn, yaw) {
     Object.assign(state, {
       scene, x: spawn.x, z: spawn.z, yaw,
       laps: 0, nextCheckpoint: 1, walk: 0,
-      countdown: 0, goTimer: 0, playerWon: null, openDoors: [],
+      countdown: 0, goTimer: 0, playerWon: null,
+      minigame: null, pillows: [], survivalTime: 0, hit: null, lives: 0, cannonYaws: [],
     });
     Object.assign(rival, {
       x: START.x + 1.6, z: START.z, yaw: Math.PI,
       laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
-      controls: { forward: 1, turn: 0 }, intent: "race",
+      controls: { forward: 1, turn: 0 }, intent: "race", lives: 0,
     });
     driver = {
       reaction: 0, line: 0, lane: 0, laneTimer: 0,
@@ -61,36 +64,32 @@ export function createGame({ random = Math.random } = {}) {
     return Math.hypot(state.x - BUTTON.x, state.z - BUTTON.z) < BUTTON.r + R + 1;
   }
 
-  function nearDoor() {
-    return state.scene === "lobby" && lobbyDoors.some(door =>
-      !state.openDoors.includes(door.id) &&
-      Math.hypot(state.x - door.x, state.z - door.z) < 2.8
-    );
-  }
-
-  function openDoor() {
-    const door = lobbyDoors.find(({ id, x, z }) =>
-      !state.openDoors.includes(id) && Math.hypot(state.x - x, state.z - z) < 2.8
-    );
-    if (!door || state.scene !== "lobby") return false;
-    state.openDoors.push(door.id);
-    return true;
-  }
-
-  function lobbyCollisionWalls() {
-    return [
-      ...lobbyWalls,
-      ...lobbyDoors.filter(({ id }) => !state.openDoors.includes(id)).map(({ wall }) => wall),
-    ];
-  }
-
   function enterTrack() {
     setScene("countdown", { x: START.x - 1.6, z: START.z }, Math.PI);
+    state.minigame = "track";
     state.countdown = 3;
+  }
+
+  function enterPillows() {
+    setScene("countdown", { x: -3, z: 0 }, Math.PI);
+    state.minigame = "pillows";
+    pillowRound.reset(state, rival);
+    state.countdown = 3;
+  }
+
+  function enterMinigame() {
+    const selected = MINIGAMES[Math.floor(random() * MINIGAMES.length)];
+    if (selected === "track") enterTrack();
+    else enterPillows();
+    return selected;
   }
 
   function reset() {
     setScene("lobby", LOBBY_SPAWN, Math.PI / 2);
+  }
+
+  function returnToButton() {
+    setScene("lobby", BUTTON, Math.PI / 2);
   }
 
   function finishRace(playerWon) {
@@ -200,7 +199,7 @@ export function createGame({ random = Math.random } = {}) {
     if (state.scene === "countdown") {
       state.countdown = Math.max(0, state.countdown - elapsed);
       if (state.countdown === 0) {
-        state.scene = "track";
+        state.scene = state.minigame;
         state.goTimer = 0.7;
       }
       // Neither racer gets movement from time spent in the countdown.
@@ -208,18 +207,26 @@ export function createGame({ random = Math.random } = {}) {
     } else if (state.goTimer > 0) {
       state.goTimer = Math.max(0, state.goTimer - elapsed);
     }
-    if (state.scene === "lobby" || state.scene === "track") {
+    if (state.scene === "lobby" || state.scene === "track" || state.scene === "pillows") {
       const turn = Number(Boolean(keys["a"] || keys["arrowleft"])) -
         Number(Boolean(keys["d"] || keys["arrowright"]));
       let fwd = 0;
       if (keys["w"] || keys["arrowup"]) fwd += 1;
       if (keys["s"] || keys["arrowdown"]) fwd -= 1;
       moving = fwd !== 0;
-      const walls = state.scene === "lobby" ? lobbyCollisionWalls() : trackWalls;
+      const walls = state.scene === "lobby" ? lobbyWalls :
+        state.scene === "pillows" ? arenaWalls : trackWalls;
+      const previousPlayer = { x: state.x, z: state.z };
+      const previousRival = { x: rival.x, z: rival.z };
       moveRacer(state, dt, fwd, turn, SPEED, walls);
       if (state.scene === "track") {
         updateLaps(state, previousZ);
         if (state.scene === "track") moveRival(dt);
+      } else if (state.scene === "pillows") {
+        pillowRound.chooseControls(state, rival, dt);
+        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, walls);
+        rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
+        pillowRound.update(state, rival, dt, previousPlayer, previousRival);
       }
     }
     state.walk = moving ? state.walk + dt * 11 : 0;
@@ -227,5 +234,8 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   reset();
-  return { state, rival, nearButton, nearDoor, openDoor, enterTrack, reset, update };
+  return {
+    state, rival, nearButton, enterTrack, enterPillows, enterMinigame,
+    reset, returnToButton, update,
+  };
 }
