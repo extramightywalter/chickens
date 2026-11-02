@@ -1,6 +1,6 @@
 import {
   BUTTON, CELL, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
-  checkpoints, lobbyWalls, trackWalls,
+  checkpoints, lobbyDoors, lobbyWalls, trackWalls,
 } from "./track.js";
 
 export function collide(px, pz, walls) {
@@ -43,7 +43,7 @@ export function createGame({ random = Math.random } = {}) {
     Object.assign(state, {
       scene, x: spawn.x, z: spawn.z, yaw,
       laps: 0, nextCheckpoint: 1, walk: 0,
-      countdown: 0, goTimer: 0, playerWon: null,
+      countdown: 0, goTimer: 0, playerWon: null, openDoors: [],
     });
     Object.assign(rival, {
       x: START.x + 1.6, z: START.z, yaw: Math.PI,
@@ -59,6 +59,29 @@ export function createGame({ random = Math.random } = {}) {
 
   function nearButton() {
     return Math.hypot(state.x - BUTTON.x, state.z - BUTTON.z) < BUTTON.r + R + 1;
+  }
+
+  function nearDoor() {
+    return state.scene === "lobby" && lobbyDoors.some(door =>
+      !state.openDoors.includes(door.id) &&
+      Math.hypot(state.x - door.x, state.z - door.z) < 2.8
+    );
+  }
+
+  function openDoor() {
+    const door = lobbyDoors.find(({ id, x, z }) =>
+      !state.openDoors.includes(id) && Math.hypot(state.x - x, state.z - z) < 2.8
+    );
+    if (!door || state.scene !== "lobby") return false;
+    state.openDoors.push(door.id);
+    return true;
+  }
+
+  function lobbyCollisionWalls() {
+    return [
+      ...lobbyWalls,
+      ...lobbyDoors.filter(({ id }) => !state.openDoors.includes(id)).map(({ wall }) => wall),
+    ];
   }
 
   function enterTrack() {
@@ -192,7 +215,7 @@ export function createGame({ random = Math.random } = {}) {
       if (keys["w"] || keys["arrowup"]) fwd += 1;
       if (keys["s"] || keys["arrowdown"]) fwd -= 1;
       moving = fwd !== 0;
-      const walls = state.scene === "lobby" ? lobbyWalls : trackWalls;
+      const walls = state.scene === "lobby" ? lobbyCollisionWalls() : trackWalls;
       moveRacer(state, dt, fwd, turn, SPEED, walls);
       if (state.scene === "track") {
         updateLaps(state, previousZ);
@@ -204,5 +227,5 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   reset();
-  return { state, rival, nearButton, enterTrack, reset, update };
+  return { state, rival, nearButton, nearDoor, openDoor, enterTrack, reset, update };
 }

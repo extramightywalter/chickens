@@ -118,6 +118,9 @@ export async function createWorld() {
     }
   }
   const loader = new GLTFLoader();
+  let lobbyStructure;
+  const doors = new Map();
+  const doorMat = new THREE.MeshLambertMaterial({ color: 0x68401f });
   await Promise.all(lobbyStructures.map(async structure => {
     const { scene: model } = await loader.loadAsync(
       new URL(structure.asset, import.meta.url).href
@@ -125,13 +128,39 @@ export async function createWorld() {
     model.scale.setScalar(structure.scale);
     const bounds = new THREE.Box3().setFromObject(model);
     const center = bounds.getCenter(new THREE.Vector3());
-    model.position.set(structure.x - center.x, -bounds.min.y, structure.z - center.z);
+    model.position.set(-center.x, -bounds.min.y, -center.z);
     model.traverse(object => {
       if (!object.isMesh) return;
       object.castShadow = true;
       object.receiveShadow = true;
     });
-    lobby.add(model);
+    const structureGroup = new THREE.Group();
+    structureGroup.position.set(structure.x, 0, structure.z);
+    structureGroup.rotation.y = structure.rotation;
+    structureGroup.add(model);
+    lobby.add(structureGroup);
+    if (structure.type === "lobby") lobbyStructure = structureGroup;
+    if (structure.type === "house" || structure.type === "shop") {
+      const { entranceSide, entranceWidth, modelDepth, rotation, scale } = structure;
+      const thickness = 0.18;
+      const doorHeight = Math.min(5, scale * 0.65);
+      const side = entranceSide === "south" ? 1 : -1;
+      const pivot = new THREE.Group();
+      const leaf = new THREE.Mesh(
+        new THREE.BoxGeometry(entranceWidth, doorHeight, thickness), doorMat
+      );
+      leaf.position.y = doorHeight / 2;
+      leaf.position.x = entranceWidth / 2;
+      leaf.castShadow = true;
+      leaf.receiveShadow = true;
+      pivot.position.set(
+        -entranceWidth / 2, 0,
+        side * Math.cos(rotation) * (modelDepth / 2 - thickness / 2)
+      );
+      pivot.add(leaf);
+      structureGroup.add(pivot);
+      doors.set(structure.id, { pivot, openRotation: Math.PI / 2 });
+    }
   }));
 
   const padMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
@@ -141,8 +170,9 @@ export async function createWorld() {
 
   const buttonMat = new THREE.MeshLambertMaterial({ color: 0xc0392b });
   const button = new THREE.Mesh(new THREE.CylinderGeometry(BUTTON.r, BUTTON.r, 0.3, 32), buttonMat);
-  button.position.set(BUTTON.x, 0.15, BUTTON.z);
-  lobby.add(button);
+  lobbyStructure.updateWorldMatrix(true, false);
+  button.position.copy(lobbyStructure.worldToLocal(new THREE.Vector3(BUTTON.x, 0.15, BUTTON.z)));
+  lobbyStructure.add(button);
 
   const arrowShape = new THREE.Shape();
   arrowShape.moveTo(0, -0.8);
@@ -160,7 +190,7 @@ export async function createWorld() {
   }
 
   const { scene: chickenModel } = await loader.loadAsync(
-    new URL("../chicken.glb", import.meta.url).href
+    new URL("../assets/models/chicken.glb", import.meta.url).href
   );
   const chicken = createChicken(chickenModel);
   const rivalChicken = createChicken(chickenModel, true);
@@ -181,6 +211,9 @@ export async function createWorld() {
     lobby.visible = state.scene === "lobby";
     rivalChicken.visible = state.scene !== "lobby";
     buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
+    for (const [id, { pivot, openRotation }] of doors) {
+      pivot.rotation.y = state.openDoors.includes(id) ? openRotation : 0;
+    }
 
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;

@@ -53,9 +53,17 @@ export const LOBBY_CELL_WIDTH = (LOBBY_BOUNDS.maxX - LOBBY_BOUNDS.minX) / LOBBY_
 export const LOBBY_CELL_DEPTH = (LOBBY_BOUNDS.maxZ - LOBBY_BOUNDS.minZ) / LOBBY_ROWS;
 
 const LOBBY_STRUCTURE_TYPES = {
-  x: { type: "house", asset: "../home.glb", width: 1.728000164, depth: 1.8472936 },
-  y: { type: "games", asset: "../games.glb", width: 3.9, depth: 5.035 },
-  z: { type: "shop", asset: "../tests/shop.glb", width: 8.5856, depth: 7.55700434 },
+  x: {
+    type: "house", asset: "../assets/models/home.glb", width: 1.728000164, depth: 1.8472936,
+  },
+  y: {
+    type: "lobby", asset: "../assets/models/lobby.glb", width: 3.9, depth: 5.035,
+    entranceWidth: 1.17, entranceRotation: Math.PI,
+  },
+  z: {
+    type: "shop", asset: "../assets/models/shop.glb", width: 8.5856, depth: 7.55700434,
+    scaleMultiplier: 3, offsetX: 4,
+  },
 };
 
 export function lobbyCellPosition(column, row) {
@@ -65,26 +73,98 @@ export function lobbyCellPosition(column, row) {
   };
 }
 
+let structureIndex = 0;
 export const lobbyStructures = LOBBY_MAP.flatMap((line, row) =>
   [...line].flatMap((key, column) => {
     const structure = LOBBY_STRUCTURE_TYPES[key];
     if (!structure) return [];
     const position = lobbyCellPosition(column, row);
-    const scale = LOBBY_BUILDING_WIDTH / structure.width;
+    const scale = LOBBY_BUILDING_WIDTH / structure.width * (structure.scaleMultiplier ?? 1);
+    const side = key === "x" ? (row < 3 ? "north" : "south") :
+      key === "y" ? "west" : "south";
+    const modelWidth = structure.width * scale, modelDepth = structure.depth * scale;
+    const rotated = side === "west" || side === "east";
     return [{
-      ...structure, ...position, key, scale,
-      width: structure.width * scale, depth: structure.depth * scale,
+      ...structure, ...position, x: position.x + (structure.offsetX ?? 0), key, scale,
+      id: `${structure.type}-${structureIndex++}`,
+      entranceSide: structure.type === "house" ? (side === "north" ? "south" : "north") :
+        structure.type === "shop" ? "north" : side,
+      entranceWidth: structure.entranceWidth ? scale * structure.entranceWidth :
+        Math.max(2.8, scale * 0.55),
+      rotation: { south: 0, west: -Math.PI / 2, north: Math.PI, east: Math.PI / 2 }[side] +
+        (structure.entranceRotation ?? 0),
+      modelWidth, modelDepth,
+      width: rotated ? modelDepth : modelWidth,
+      depth: rotated ? modelWidth : modelDepth,
     }];
   })
 );
 export const LOBBY_SPAWN = lobbyCellPosition(0, 3);
-export const BUTTON = { ...lobbyCellPosition(27, 5), r: 1.8 };
+const lobbyStructure = lobbyStructures.find(({ type }) => type === "lobby");
+export const BUTTON = {
+  x: lobbyStructure.x + 1,
+  z: lobbyStructure.z,
+  r: 1.8,
+};
 
-// The same wall bounds drive collision detection around the lobby buildings.
-export const lobbyWalls = lobbyStructures.map(({ x, z, width, depth }) => ({
-  minX: x - width / 2, maxX: x + width / 2,
-  minZ: z - depth / 2, maxZ: z + depth / 2,
+const LOBBY_WALL_THICKNESS = 0.2;
+function entrancePoint(structure) {
+  const { x, z, width, depth, entranceSide } = structure;
+  return {
+    x: entranceSide === "west" ? x - width / 2 :
+      entranceSide === "east" ? x + width / 2 : x,
+    z: entranceSide === "north" ? z - depth / 2 :
+      entranceSide === "south" ? z + depth / 2 : z,
+  };
+}
+function wall(minX, maxX, minZ, maxZ) {
+  return { minX, maxX, minZ, maxZ };
+}
+
+export const lobbyEntrances = lobbyStructures.map(structure => ({
+  ...structure, ...entrancePoint(structure),
+  hasDoor: structure.type === "house" || structure.type === "shop",
 }));
+
+export const lobbyDoorWalls = lobbyEntrances.filter(({ hasDoor }) => hasDoor).map(door => {
+  const { x, z, entranceWidth, entranceSide } = door;
+  const halfOpening = entranceWidth / 2;
+  if (entranceSide === "north" || entranceSide === "south") {
+    const faceZ = entranceSide === "north" ? z : z - LOBBY_WALL_THICKNESS;
+    return wall(x - halfOpening, x + halfOpening, faceZ, faceZ + LOBBY_WALL_THICKNESS);
+  }
+  const faceX = entranceSide === "west" ? x : x - LOBBY_WALL_THICKNESS;
+  return wall(faceX, faceX + LOBBY_WALL_THICKNESS, z - halfOpening, z + halfOpening);
+});
+export const lobbyDoors = lobbyEntrances.filter(({ hasDoor }) => hasDoor).map((door, index) => ({
+  ...door, wall: lobbyDoorWalls[index],
+}));
+
+export const lobbyWalls = lobbyStructures.flatMap(structure => {
+  const { x, z, width, depth, entranceSide, entranceWidth } = structure;
+  const minX = x - width / 2, maxX = x + width / 2;
+  const minZ = z - depth / 2, maxZ = z + depth / 2;
+  const halfOpening = entranceWidth / 2;
+  const walls = [];
+  if (entranceSide === "north" || entranceSide === "south") {
+    const faceZ = entranceSide === "north" ? minZ : maxZ - LOBBY_WALL_THICKNESS;
+    walls.push(
+      wall(minX, x - halfOpening, faceZ, faceZ + LOBBY_WALL_THICKNESS),
+      wall(x + halfOpening, maxX, faceZ, faceZ + LOBBY_WALL_THICKNESS)
+    );
+  } else {
+    const faceX = entranceSide === "west" ? minX : maxX - LOBBY_WALL_THICKNESS;
+    walls.push(
+      wall(faceX, faceX + LOBBY_WALL_THICKNESS, minZ, z - halfOpening),
+      wall(faceX, faceX + LOBBY_WALL_THICKNESS, z + halfOpening, maxZ)
+    );
+  }
+  if (entranceSide !== "west") walls.push(wall(minX, minX + LOBBY_WALL_THICKNESS, minZ, maxZ));
+  if (entranceSide !== "east") walls.push(wall(maxX - LOBBY_WALL_THICKNESS, maxX, minZ, maxZ));
+  if (entranceSide !== "north") walls.push(wall(minX, maxX, minZ, minZ + LOBBY_WALL_THICKNESS));
+  if (entranceSide !== "south") walls.push(wall(minX, maxX, maxZ - LOBBY_WALL_THICKNESS, maxZ));
+  return walls;
+});
 
 export const PAINTINGS = [
   { x: 103, z: 10, yaw: 0 },

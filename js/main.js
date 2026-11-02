@@ -1,4 +1,4 @@
-import { createGame } from "./game.js";
+import { createGame } from "./lobby.js";
 import { createInput } from "./input.js";
 import { LAPS_TO_WIN } from "./track.js";
 import { createWorld } from "./world.js";
@@ -16,9 +16,15 @@ const countdown = document.getElementById("countdown");
 const input = createInput(key => {
   if (state.scene === "finished" && key === "enter") {
     game.reset();
-  } else if (state.scene === "lobby" && key === "e" && game.nearButton()) {
-    sounds.unlock();
-    game.enterTrack();
+  } else if (state.scene === "lobby" && key === "e") {
+    if (game.nearDoor()) {
+      game.openDoor();
+    } else if (game.nearButton()) {
+      sounds.unlock();
+      game.enterTrack();
+    } else {
+      return;
+    }
   } else {
     return;
   }
@@ -29,7 +35,10 @@ world.resetCamera(state);
 
 function updateUI() {
   hud.textContent = state.scene === "lobby"
-    ? `W/S move | A/D turn | ${game.nearButton() ? "Press E to race!" : "Walk to the red button to race"}`
+    ? `W/S move | A/D turn | ${
+      game.nearDoor() ? "Press E to open the door" :
+        game.nearButton() ? "Press E to race!" : "Walk to the red button to race"
+    }`
     : `You: ${state.laps} / ${LAPS_TO_WIN} laps | Red rival: ${rival.laps} / ${LAPS_TO_WIN} laps | W/S move | A/D turn | Follow the arrows`;
   countdown.textContent = state.scene === "track" && state.goTimer > 0
     ? "GO!" : String(Math.ceil(state.countdown));

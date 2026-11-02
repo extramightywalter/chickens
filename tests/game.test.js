@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { collide, createGame as createRandomGame } from "../js/game.js";
+import { collide, createGame as createRandomGame } from "../js/lobby.js";
 import {
   BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, LAPS_TO_WIN, LOBBY_BOUNDS,
   LOBBY_BUILDING_WIDTH, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH,
   LOBBY_COLS, LOBBY_MAP, LOBBY_ROWS, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED,
-  SPEED, START, TURN, checkpoints, cols, lobbyStructures, lobbyWalls, rows, trackWalls,
+  SPEED, START, TURN, checkpoints, cols, lobbyDoors, lobbyEntrances, lobbyStructures,
+  lobbyWalls, rows, trackWalls,
 } from "../js/track.js";
 
 function createGame(seed = 1) {
@@ -138,11 +139,11 @@ test("lobby map preserves the sketch with a compact footprint", () => {
   assert.equal(lobbyStructures.length, 6);
   assert.deepEqual(
     lobbyStructures.map(({ type }) => type).sort(),
-    ["games", "house", "house", "house", "house", "shop"]
+    ["house", "house", "house", "house", "lobby", "shop"]
   );
 });
 
-test("building scales preserve model proportions at ten rendered chicken widths", () => {
+test("building scales preserve model proportions at their intended chicken widths", () => {
   function modelBounds(asset) {
     const data = readFileSync(new URL(asset, import.meta.url));
     const jsonLength = data.readUInt32LE(12);
@@ -150,17 +151,18 @@ test("building scales preserve model proportions at ten rendered chicken widths"
     const positions = gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION];
     return positions.max.map((value, axis) => value - positions.min[axis]);
   }
-  const [chickenWidth] = modelBounds("../chicken.glb");
+  const [chickenWidth] = modelBounds("../assets/models/chicken.glb");
   assert.ok(Math.abs(CHICKEN_WIDTH - chickenWidth * CHICKEN_SCALE) < 1e-8);
-  for (const [index, structure] of lobbyStructures.entries()) {
+  for (const structure of lobbyStructures) {
     const [width, , depth] = modelBounds(`../js/${structure.asset}`);
+    const widthMultiplier = structure.type === "shop" ? 3 : 1;
+    const rotated = structure.entranceSide === "west" || structure.entranceSide === "east";
     assert.ok(structure.scale > 1, `${structure.type} should be enlarged`);
-    assert.ok(Math.abs(width * structure.scale / CHICKEN_WIDTH - 10) < 1e-6);
-    assert.ok(Math.abs(structure.width - LOBBY_BUILDING_WIDTH) < 1e-8);
-    assert.ok(Math.abs(structure.depth - depth * structure.scale) < 1e-6);
-    const wall = lobbyWalls[index];
-    assert.ok(Math.abs(wall.maxX - wall.minX - width * structure.scale) < 1e-6);
-    assert.ok(Math.abs(wall.maxZ - wall.minZ - depth * structure.scale) < 1e-6);
+    assert.ok(Math.abs(width * structure.scale / CHICKEN_WIDTH - 10 * widthMultiplier) < 1e-6);
+    assert.ok(Math.abs(structure.modelWidth - LOBBY_BUILDING_WIDTH * widthMultiplier) < 1e-8);
+    assert.ok(Math.abs(structure.modelDepth - depth * structure.scale) < 1e-6);
+    assert.ok(Math.abs(structure.width - (rotated ? depth : width) * structure.scale) < 1e-6);
+    assert.ok(Math.abs(structure.depth - (rotated ? width : depth) * structure.scale) < 1e-6);
   }
 });
 
@@ -168,16 +170,99 @@ test("compact buildings leave walking space and keep the spawn and race button c
   for (const point of [LOBBY_SPAWN, BUTTON]) {
     assert.deepEqual(collide(point.x, point.z, lobbyWalls), [point.x, point.z]);
   }
-  for (const [index, wall] of lobbyWalls.entries()) {
-    for (const other of lobbyWalls.slice(index + 1)) {
-      const gapX = Math.max(0, wall.minX - other.maxX, other.minX - wall.maxX);
-      const gapZ = Math.max(0, wall.minZ - other.maxZ, other.minZ - wall.maxZ);
+  for (const [index, structure] of lobbyStructures.entries()) {
+    const bounds = {
+      minX: structure.x - structure.width / 2, maxX: structure.x + structure.width / 2,
+      minZ: structure.z - structure.depth / 2, maxZ: structure.z + structure.depth / 2,
+    };
+    for (const other of lobbyStructures.slice(index + 1)) {
+      const otherBounds = {
+        minX: other.x - other.width / 2, maxX: other.x + other.width / 2,
+        minZ: other.z - other.depth / 2, maxZ: other.z + other.depth / 2,
+      };
+      const gapX = Math.max(0, bounds.minX - otherBounds.maxX, otherBounds.minX - bounds.maxX);
+      const gapZ = Math.max(0, bounds.minZ - otherBounds.maxZ, otherBounds.minZ - bounds.maxZ);
       assert.ok(Math.hypot(gapX, gapZ) > R * 2, "Buildings need a chicken-wide gap");
     }
-    const closestX = Math.max(wall.minX, Math.min(BUTTON.x, wall.maxX));
-    const closestZ = Math.max(wall.minZ, Math.min(BUTTON.z, wall.maxZ));
-    assert.ok(Math.hypot(BUTTON.x - closestX, BUTTON.z - closestZ) > BUTTON.r + R);
+    const closestX = Math.max(bounds.minX, Math.min(BUTTON.x, bounds.maxX));
+    const closestZ = Math.max(bounds.minZ, Math.min(BUTTON.z, bounds.maxZ));
+    if (structure.type !== "lobby") {
+      assert.ok(Math.hypot(BUTTON.x - closestX, BUTTON.z - closestZ) > BUTTON.r + R);
+    }
   }
+  for (const entrance of lobbyEntrances) {
+    assert.deepEqual(collide(entrance.x, entrance.z, lobbyWalls), [entrance.x, entrance.z]);
+  }
+});
+
+test("house and shop doors open with E while the lobby arch is walkable", () => {
+  const game = createGame();
+  for (const door of lobbyDoors) {
+    const outside = door.entranceSide === "north" ? -1 : 1;
+    const approach = {
+      x: door.x, z: door.z + outside * 1.4,
+      yaw: outside === -1 ? 0 : Math.PI,
+    };
+    Object.assign(game.state, approach);
+    assert.equal(game.nearDoor(), true);
+    for (let step = 0; step < 8; step++) game.update(0.05, 0.05, { w: true });
+    assert.ok((game.state.z - door.z) * outside > 0, "the closed door should block entry");
+    assert.equal(game.openDoor(), true);
+    Object.assign(game.state, approach);
+    for (let step = 0; step < 8; step++) game.update(0.05, 0.05, { w: true });
+    assert.ok((game.state.z - door.z) * outside < 0, "the open doorway should allow entry");
+  }
+
+  const lobby = lobbyEntrances.find(({ type }) => type === "lobby");
+  Object.assign(game.state, { x: lobby.x - 1.5, z: lobby.z, yaw: Math.PI / 2 });
+  game.update(0.4, 0.4, { w: true });
+  assert.ok(game.state.x > lobby.x, "the lobby arch should allow entry");
+  assert.equal(game.nearButton(), false);
+  Object.assign(game.state, { x: BUTTON.x, z: BUTTON.z });
+  assert.equal(game.nearButton(), true);
+});
+
+test("houses and shop face the opposite direction without turning the lobby", () => {
+  const houses = lobbyStructures.filter(({ type }) => type === "house");
+  assert.deepEqual(houses.map(({ entranceSide }) => entranceSide), ["south", "south", "north", "north"]);
+  assert.deepEqual(houses.map(({ rotation }) => rotation), [Math.PI, Math.PI, 0, 0]);
+  const shop = lobbyStructures.find(({ type }) => type === "shop");
+  assert.equal(shop.entranceSide, "north");
+  assert.equal(shop.rotation, 0);
+  const lobby = lobbyStructures.find(({ type }) => type === "lobby");
+  assert.equal(lobby.entranceSide, "west");
+  assert.equal(lobby.rotation, Math.PI / 2);
+});
+
+test("house and shop doors sit on their entrances without changing building rotations", () => {
+  for (const structure of lobbyStructures.filter(({ type }) => type === "house" || type === "shop")) {
+    const door = lobbyDoors.find(({ id }) => id === structure.id);
+    const side = structure.entranceSide === "south" ? 1 : -1;
+    const localDoorZ = side * Math.cos(structure.rotation) * structure.modelDepth / 2;
+    assert.ok(Math.abs(door.z - (structure.z + Math.cos(structure.rotation) * localDoorZ)) < 1e-10);
+    assert.deepEqual(collide(door.x, door.z, lobbyWalls), [door.x, door.z]);
+    const oppositeZ = structure.z - (door.z - structure.z);
+    assert.notDeepEqual(collide(structure.x, oppositeZ, lobbyWalls), [structure.x, oppositeZ]);
+  }
+});
+
+test("the lobby model's north arch faces the road and leads to the indoor race button", () => {
+  const lobby = lobbyStructures.find(({ type }) => type === "lobby");
+  const entrance = lobbyEntrances.find(({ type }) => type === "lobby");
+  assert.equal(lobby.asset, "../assets/models/lobby.glb");
+  assert.equal(lobby.rotation, Math.PI / 2);
+  assert.ok(Math.abs(lobby.entranceWidth - 1.17 * lobby.scale) < 1e-10);
+  // The model's arch faces negative Z; rotation must point it west toward the road.
+  assert.ok(Math.abs(-Math.sin(lobby.rotation) + 1) < 1e-10);
+  const game = createGame();
+  Object.assign(game.state, { x: entrance.x - 2, z: entrance.z, yaw: Math.PI / 2 });
+  for (let step = 0; step < 25; step++) game.update(0.05, 0.05, { w: true });
+  assert.ok(game.state.x > entrance.x + 4, "walking through the visible arch must reach the interior");
+  assert.equal(game.nearButton(), true);
+  assert.ok(BUTTON.x - BUTTON.r > lobby.x - lobby.width / 2);
+  assert.ok(BUTTON.x + BUTTON.r < lobby.x + lobby.width / 2);
+  assert.ok(BUTTON.z - BUTTON.r > lobby.z - lobby.depth / 2);
+  assert.ok(BUTTON.z + BUTTON.r < lobby.z + lobby.depth / 2);
 });
 
 test("laps require ordered checkpoints and a forward start-line crossing", () => {

@@ -14,8 +14,11 @@ python3 -m http.server 8000 --bind 127.0.0.1
 Open <http://127.0.0.1:8000>. Three.js is loaded from the CDN in the import map,
 so an internet connection is required. GitHub Pages serves the same files as-is.
 
-W/S or up/down arrows move; A/D or left/right arrows turn. Walk to the red
-button and press E to race. Complete three laps before the red rival.
+W/S or up/down arrows move; A/D or left/right arrows turn. Press E at a house
+or shop entrance to open its door, and walk through the lobby-building arch.
+Walk through the lobby arch at the end of the road to the red button inside,
+then press E to race. Complete
+three laps before the red rival.
 The rival uses the same chicken model as the player, with green parts recolored red.
 It uses short steering taps and throttle changes within the player's movement
 limits. It chooses different lines each lap, tries to pass or dodge nearby
@@ -28,9 +31,10 @@ chicken squawks at its own random interval during the race. Audio starts when
 you press E, which also satisfies browser sound permissions.
 Four framed copies of `oreo portrait.png` hang on track walls, facing into the
 course. Their positions and orientations are defined in `js/track.js`.
-The lobby uses the road sketch on a compact 108-by-72 footprint. Each building
-is about ten player chickens wide, scaled uniformly on all axes to preserve its
-proportions. Building collisions use the same scaled dimensions.
+The lobby uses the road sketch on a compact 108-by-72 footprint. Houses and the
+lobby building are about ten player chickens wide; the shop is scaled to three
+times that size. All structures are scaled uniformly to preserve proportions,
+and their wall collisions leave the entrances open.
 
 ## Structure
 
@@ -38,12 +42,13 @@ proportions. Building collisions use the same scaled dimensions.
 - `js/main.js`: startup, UI updates, and animation loop.
 - `js/input.js`: keyboard state and focus handling.
 - `js/audio.js`: generated countdown, start, and chicken sounds.
-- `js/game.js`: movement, collisions, countdown, rival AI, and race rules;
+- `js/lobby.js`: movement, collisions, countdown, rival AI, and race rules;
   independent of the DOM and Three.js.
 - `js/track.js`: shared track and lobby layouts, wall bounds, and gameplay constants.
-- `js/world.js`: Three.js scene, lobby building models, `chicken.glb` racers,
+- `js/world.js`: Three.js scene, lobby building models, `assets/models/chicken.glb` racers,
   animation, and camera.
 - `js/paintings.js`: shared portrait texture and framed wall decorations.
+- `assets/models/`: GLB models used by the game and additional model assets.
 
 Run the game-rule tests with Node.js 18 or newer:
 
