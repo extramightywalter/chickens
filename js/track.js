@@ -61,7 +61,7 @@ const LOBBY_STRUCTURE_TYPES = {
     entranceWidth: 1.17, entranceRotation: Math.PI,
   },
   z: {
-    type: "shop", asset: "../assets/models/shop.glb", width: 8.5856, depth: 7.55700434,
+    type: "shop", asset: "../assets/models/giant-building.glb", width: 8.5856, depth: 7.55700434,
     scaleMultiplier: 3, offsetX: 4,
   },
 };
