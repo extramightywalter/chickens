@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { LOBBY_PAINTING, PAINTINGS } from "./track.js";
+import { PAINTINGS } from "./track.js";
 
-export async function addPaintings(track, lobby) {
+export async function addPaintings(track) {
   const texture = await new THREE.TextureLoader().loadAsync(
     new URL("../oreo portrait.png", import.meta.url).href
   );
@@ -15,11 +15,7 @@ export async function addPaintings(track, lobby) {
   const gold = new THREE.MeshLambertMaterial({ color: 0xd4a843 });
   const art = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
 
-  const placements = [
-    ...PAINTINGS.map(placement => ({ ...placement, group: track })),
-    { ...LOBBY_PAINTING, group: lobby },
-  ];
-  for (const { x, z, yaw, group } of placements) {
+  for (const { x, z, yaw } of PAINTINGS) {
     const painting = new THREE.Group();
     painting.name = "Oreo portrait";
     const outer = new THREE.Mesh(outerGeometry, wood);
@@ -31,6 +27,6 @@ export async function addPaintings(track, lobby) {
     painting.add(outer, inner, portrait);
     painting.position.set(x, 1.5, z);
     painting.rotation.y = yaw;
-    group.add(painting);
+    track.add(painting);
   }
 }

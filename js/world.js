@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addPaintings } from "./paintings.js";
 import {
-  BUTTON, CELL, MAP, START, WALL_H, checkpoints, cols, lobbyWalls, rows, trackWalls,
+  BUTTON, CELL, CHICKEN_SCALE, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
+  START, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows, trackWalls,
 } from "./track.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
@@ -13,7 +14,7 @@ const RIVAL_COLORS = {
 
 function createChicken(model, rival = false) {
   const chicken = model.clone(true);
-  chicken.scale.setScalar(0.7);
+  chicken.scale.setScalar(CHICKEN_SCALE);
   chicken.traverse(object => {
     if (!object.isMesh) return;
     object.castShadow = true;
@@ -35,6 +36,8 @@ export async function createWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
   scene.fog = new THREE.Fog(0x87ceeb, 40, 110);
+  const lobbyCenterX = (LOBBY_BOUNDS.minX + LOBBY_BOUNDS.maxX) / 2;
+  const lobbyCenterZ = (LOBBY_BOUNDS.minZ + LOBBY_BOUNDS.maxZ) / 2;
 
   const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 300);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -51,15 +54,18 @@ export async function createWorld() {
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 0.9));
   const sun = new THREE.DirectionalLight(0xfff2cc, 1.2);
-  sun.position.set(cols * CELL * 0.5 + 30, 60, rows * CELL * 0.5 - 40);
+  sun.position.set(lobbyCenterX + 30, 600, lobbyCenterZ - 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const span = Math.max(cols, rows) * CELL * 0.75;
+  const span = Math.max(
+    LOBBY_BOUNDS.maxX - LOBBY_BOUNDS.minX,
+    LOBBY_BOUNDS.maxZ - LOBBY_BOUNDS.minZ
+  ) * 0.75;
   sun.shadow.camera.left = -span; sun.shadow.camera.right = span;
   sun.shadow.camera.top = span; sun.shadow.camera.bottom = -span;
-  sun.shadow.camera.far = 200;
+  sun.shadow.camera.far = 1200;
   const sunTarget = new THREE.Object3D();
-  sunTarget.position.set(cols * CELL / 2, 0, rows * CELL / 2);
+  sunTarget.position.set(lobbyCenterX, 0, lobbyCenterZ);
   scene.add(sunTarget); sun.target = sunTarget;
   scene.add(sun);
 
@@ -68,7 +74,7 @@ export async function createWorld() {
     new THREE.MeshLambertMaterial({ color: 0x3f9e4d })
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(cols * CELL / 2, 0, rows * CELL / 2);
+  ground.position.set(lobbyCenterX, 0, lobbyCenterZ);
   ground.receiveShadow = true;
   scene.add(ground);
 
@@ -88,8 +94,7 @@ export async function createWorld() {
     group.add(mesh);
   }
   for (const wall of trackWalls) addWall(track, wall);
-  for (const wall of lobbyWalls) addWall(lobby, wall);
-  await addPaintings(track, lobby);
+  await addPaintings(track);
   const roadMat = new THREE.MeshLambertMaterial({ color: 0xb9a77a });
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     if (MAP[j][i] === "x") continue;
@@ -99,20 +104,41 @@ export async function createWorld() {
     tile.receiveShadow = true;
     track.add(tile);
   }
+  for (let j = 0; j < LOBBY_MAP.length; j++) {
+    for (let i = 0; i < LOBBY_MAP[j].length; i++) {
+      if (LOBBY_MAP[j][i] !== "r") continue;
+      const tile = new THREE.Mesh(
+        new THREE.PlaneGeometry(LOBBY_CELL_WIDTH, LOBBY_CELL_DEPTH), roadMat
+      );
+      tile.rotation.x = -Math.PI / 2;
+      const position = lobbyCellPosition(i, j);
+      tile.position.set(position.x, 0.015, position.z);
+      tile.receiveShadow = true;
+      lobby.add(tile);
+    }
+  }
+  const loader = new GLTFLoader();
+  await Promise.all(lobbyStructures.map(async structure => {
+    const { scene: model } = await loader.loadAsync(
+      new URL(structure.asset, import.meta.url).href
+    );
+    model.scale.setScalar(structure.scale);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const center = bounds.getCenter(new THREE.Vector3());
+    model.position.set(structure.x - center.x, -bounds.min.y, structure.z - center.z);
+    model.traverse(object => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+    lobby.add(model);
+  }));
 
   const padMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
   const pad = new THREE.Mesh(new THREE.BoxGeometry(CELL * 3, 0.1, 0.8), padMat);
   pad.position.set(START.x, 0.05, START.z);
   track.add(pad);
 
-  const lobbyFloor = new THREE.Mesh(
-    new THREE.PlaneGeometry(46, 28),
-    new THREE.MeshLambertMaterial({ color: 0x394867 })
-  );
-  lobbyFloor.rotation.x = -Math.PI / 2;
-  lobbyFloor.position.set(-46, 0.02, 15);
-  lobbyFloor.receiveShadow = true;
-  lobby.add(lobbyFloor);
   const buttonMat = new THREE.MeshLambertMaterial({ color: 0xc0392b });
   const button = new THREE.Mesh(new THREE.CylinderGeometry(BUTTON.r, BUTTON.r, 0.3, 32), buttonMat);
   button.position.set(BUTTON.x, 0.15, BUTTON.z);
@@ -133,7 +159,7 @@ export async function createWorld() {
     track.add(arrow);
   }
 
-  const { scene: chickenModel } = await new GLTFLoader().loadAsync(
+  const { scene: chickenModel } = await loader.loadAsync(
     new URL("../chicken.glb", import.meta.url).href
   );
   const chicken = createChicken(chickenModel);
@@ -159,7 +185,7 @@ export async function createWorld() {
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
     chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
-    const rivalMoving = state.scene === "track" && dt > 0;
+    const rivalMoving = state.scene === "track" && dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;

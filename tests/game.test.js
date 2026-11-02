@@ -1,10 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { collide, createGame } from "../js/game.js";
+import { collide, createGame as createRandomGame } from "../js/game.js";
 import {
-  BUTTON, CELL, LAPS_TO_WIN, LOBBY_PAINTING, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED, SPEED, START,
-  checkpoints, cols, lobbyWalls, rows, trackWalls,
+  BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, LAPS_TO_WIN, LOBBY_BOUNDS,
+  LOBBY_BUILDING_WIDTH, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH,
+  LOBBY_COLS, LOBBY_MAP, LOBBY_ROWS, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED,
+  SPEED, START, TURN, checkpoints, cols, lobbyStructures, lobbyWalls, rows, trackWalls,
 } from "../js/track.js";
+
+function createGame(seed = 1) {
+  return createRandomGame({
+    random: () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    },
+  });
+}
 
 function startRace(game) {
   game.enterTrack();
@@ -74,8 +86,12 @@ test("collision handles wall edges and positions inside a wall", () => {
   assert.deepEqual(collide(1, 1, walls), [-R, 1]);
   assert.deepEqual(collide(5, 5, walls), [5, 5]);
   const game = createGame();
-  for (let n = 0; n < 200; n++) game.update(0.05, 0.05, { w: true });
-  assert.equal(game.state.x, -23 - R);
+  const wall = lobbyWalls[0];
+  Object.assign(game.state, {
+    x: wall.minX - R - 0.1, z: (wall.minZ + wall.maxZ) / 2, yaw: Math.PI / 2,
+  });
+  game.update(0.05, 0.05, { w: true });
+  assert.ok(game.state.x <= wall.minX - R + 1e-10);
 });
 
 test("rendered wall bounds cover exactly the solid map cells", () => {
@@ -108,19 +124,60 @@ test("exactly four paintings are wall-backed and face the drivable course", () =
   }
 });
 
-test("lobby portrait is wall-backed and faces the lobby interior", () => {
-  const { x, z, yaw } = LOBBY_PAINTING;
-  const nx = Math.sin(yaw), nz = Math.cos(yaw);
-  const insideWall = (px, pz) => lobbyWalls.some(wall =>
-    px >= wall.minX && px <= wall.maxX && pz >= wall.minZ && pz <= wall.maxZ
+test("lobby map preserves the sketch with a compact footprint", () => {
+  assert.equal(LOBBY_MAP.length, LOBBY_ROWS);
+  assert.ok(LOBBY_MAP.every(line => line.length === LOBBY_COLS));
+  assert.equal(LOBBY_BOUNDS.maxX - LOBBY_BOUNDS.minX, 108);
+  assert.equal(LOBBY_BOUNDS.maxZ - LOBBY_BOUNDS.minZ, 72);
+  assert.equal(LOBBY_CELL_WIDTH, 3);
+  assert.equal(LOBBY_CELL_DEPTH, 7.2);
+  assert.ok(LOBBY_MAP.every(line => /^[ rxyz]+$/.test(line)));
+  assert.equal(LOBBY_MAP.join("").split("x").length - 1, 4);
+  assert.equal(LOBBY_MAP.join("").split("y").length - 1, 1);
+  assert.equal(LOBBY_MAP.join("").split("z").length - 1, 1);
+  assert.equal(lobbyStructures.length, 6);
+  assert.deepEqual(
+    lobbyStructures.map(({ type }) => type).sort(),
+    ["games", "house", "house", "house", "house", "shop"]
   );
-  for (const offset of [-1.25, 0, 1.25]) {
-    const px = x + Math.cos(yaw) * offset;
-    const pz = z - Math.sin(yaw) * offset;
-    assert.equal(insideWall(px - nx * 0.1, pz - nz * 0.1), true);
-    assert.equal(insideWall(px + nx * 0.5, pz + nz * 0.5), false);
+});
+
+test("building scales preserve model proportions at ten rendered chicken widths", () => {
+  function modelBounds(asset) {
+    const data = readFileSync(new URL(asset, import.meta.url));
+    const jsonLength = data.readUInt32LE(12);
+    const gltf = JSON.parse(data.toString("utf8", 20, 20 + jsonLength));
+    const positions = gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION];
+    return positions.max.map((value, axis) => value - positions.min[axis]);
   }
-  assert.ok(nx < 0);
+  const [chickenWidth] = modelBounds("../chicken.glb");
+  assert.ok(Math.abs(CHICKEN_WIDTH - chickenWidth * CHICKEN_SCALE) < 1e-8);
+  for (const [index, structure] of lobbyStructures.entries()) {
+    const [width, , depth] = modelBounds(`../js/${structure.asset}`);
+    assert.ok(structure.scale > 1, `${structure.type} should be enlarged`);
+    assert.ok(Math.abs(width * structure.scale / CHICKEN_WIDTH - 10) < 1e-6);
+    assert.ok(Math.abs(structure.width - LOBBY_BUILDING_WIDTH) < 1e-8);
+    assert.ok(Math.abs(structure.depth - depth * structure.scale) < 1e-6);
+    const wall = lobbyWalls[index];
+    assert.ok(Math.abs(wall.maxX - wall.minX - width * structure.scale) < 1e-6);
+    assert.ok(Math.abs(wall.maxZ - wall.minZ - depth * structure.scale) < 1e-6);
+  }
+});
+
+test("compact buildings leave walking space and keep the spawn and race button clear", () => {
+  for (const point of [LOBBY_SPAWN, BUTTON]) {
+    assert.deepEqual(collide(point.x, point.z, lobbyWalls), [point.x, point.z]);
+  }
+  for (const [index, wall] of lobbyWalls.entries()) {
+    for (const other of lobbyWalls.slice(index + 1)) {
+      const gapX = Math.max(0, wall.minX - other.maxX, other.minX - wall.maxX);
+      const gapZ = Math.max(0, wall.minZ - other.maxZ, other.minZ - wall.maxZ);
+      assert.ok(Math.hypot(gapX, gapZ) > R * 2, "Buildings need a chicken-wide gap");
+    }
+    const closestX = Math.max(wall.minX, Math.min(BUTTON.x, wall.maxX));
+    const closestZ = Math.max(wall.minZ, Math.min(BUTTON.z, wall.maxZ));
+    assert.ok(Math.hypot(BUTTON.x - closestX, BUTTON.z - closestZ) > BUTTON.r + R);
+  }
 });
 
 test("laps require ordered checkpoints and a forward start-line crossing", () => {
@@ -163,12 +220,175 @@ test("player victory freezes racers and reset clears the result", () => {
   assert.equal(game.state.playerWon, null);
 });
 
-test("rival completes three full laps and wins if the player stays still", () => {
+test("rival rounds the first corner without visiting its center", () => {
   const game = createGame();
   startRace(game);
-  for (let n = 0; n < 10000 && game.state.scene !== "finished"; n++) game.update(0.05);
-  assert.equal(game.state.scene, "finished");
-  assert.equal(game.state.playerWon, false);
-  assert.equal(game.rival.laps, LAPS_TO_WIN);
-  assert.equal(game.state.laps, 0);
+  const corner = checkpoints[1];
+  let closest = Infinity;
+  let cutInside = false;
+  for (let n = 0; n < 60; n++) {
+    game.update(0.05);
+    const { x, z } = game.rival;
+    const distance = Math.hypot(x - corner.x, z - corner.z);
+    closest = Math.min(closest, distance);
+    if (distance < 2 && x < corner.x - 0.2 && z > corner.z + 0.2) cutInside = true;
+  }
+  assert.ok(cutInside, "Rival should turn onto the inside of the corner before reaching it");
+  assert.ok(closest > 0.5, "Rival should not stop at or pivot around the checkpoint");
 });
+
+test("rival chooses different lines on both sides of a straight across laps", () => {
+  let choice = 0.85;
+  const game = createRandomGame({ random: () => choice });
+  startRace(game);
+  const offsets = [[], [], []];
+  for (let n = 0; n < 2400 && game.state.scene === "track"; n++) {
+    choice = game.rival.laps === 1 ? 0.15 : 0.85;
+    game.update(0.05);
+    if (game.rival.target === 2 && game.rival.x < 97 && game.rival.x > 79) {
+      offsets[game.rival.laps].push(game.rival.z - checkpoints[1].z);
+    }
+  }
+  assert.ok(offsets.every(lap => lap.length > 10));
+  assert.ok(Math.min(...offsets.flat()) < -0.1);
+  assert.ok(Math.max(...offsets.flat()) > 0.1);
+  const averages = offsets.map(lap => lap.reduce((sum, value) => sum + value, 0) / lap.length);
+  assert.ok(Math.max(...averages) - Math.min(...averages) > 0.2);
+});
+
+test("rival moves forward along its heading rather than sliding sideways", () => {
+  const game = createGame();
+  startRace(game);
+  for (let n = 0; n < 12; n++) {
+    const { x, z } = game.rival;
+    game.update(0.05);
+    const dx = game.rival.x - x, dz = game.rival.z - z;
+    assert.ok(Math.abs(dx * Math.cos(game.rival.yaw) - dz * Math.sin(game.rival.yaw)) < 1e-10);
+    assert.ok(dx * Math.sin(game.rival.yaw) + dz * Math.cos(game.rival.yaw) >= 0);
+  }
+});
+
+test("rival holds steering taps and occasionally releases the throttle", () => {
+  const game = createGame();
+  startRace(game);
+  const dt = 1 / 120;
+  const turns = new Set();
+  const throttle = new Set();
+  let lastChange = 0;
+  for (let n = 0; n < 20 / dt; n++) {
+    const previous = { ...game.rival.controls };
+    game.update(dt);
+    const { turn, forward } = game.rival.controls;
+    assert.ok([-1, 0, 1].includes(turn));
+    assert.ok([0, 1].includes(forward));
+    turns.add(turn);
+    throttle.add(forward);
+    if (n > 0 && (turn !== previous.turn || forward !== previous.forward)) {
+      assert.ok((n - lastChange) * dt >= 0.09, "Inputs should be held between reactions");
+      lastChange = n;
+    }
+  }
+  assert.equal(turns.size, 3);
+  assert.equal(throttle.size, 2);
+});
+
+for (const { intent, ahead, side, direction } of [
+  { intent: "pass", ahead: 5, side: 0, direction: 1 },
+  { intent: "dodge", ahead: 1, side: 0.8, direction: -1 },
+  { intent: "defend", ahead: -5, side: 1, direction: 1 },
+  { intent: "defend", ahead: -5, side: -1, direction: -1 },
+]) {
+  test(`rival steers to ${intent} with player offset ${side}`, () => {
+    const game = createRandomGame({ random: () => 0.5 });
+    startRace(game);
+    Object.assign(game.rival, {
+      x: 90, z: 13, yaw: -Math.PI / 2, target: 2, nextCheckpoint: 2,
+    });
+    for (let n = 0; n < 12; n++) {
+      Object.assign(game.state, { x: game.rival.x - ahead, z: 13 + side, yaw: -Math.PI / 2 });
+      game.update(0.05);
+      assert.equal(game.rival.intent, intent);
+    }
+    assert.ok((game.rival.z - 13) * direction > 0.5);
+  });
+}
+
+test("rival ignores distant players and racers facing the opposite direction", () => {
+  for (const { x, yaw } of [
+    { x: 50, yaw: -Math.PI / 2 },
+    { x: 85, yaw: Math.PI / 2 },
+  ]) {
+    const game = createRandomGame({ random: () => 0.5 });
+    startRace(game);
+    Object.assign(game.rival, {
+      x: 90, z: 13, yaw: -Math.PI / 2, target: 2, nextCheckpoint: 2,
+    });
+    Object.assign(game.state, { x, z: 13, yaw });
+    for (let n = 0; n < 12; n++) game.update(0.05);
+    assert.equal(game.rival.intent, "race");
+    assert.equal(game.rival.z, 13);
+  }
+});
+
+test("occasional late steering changes the racing line but recovers to finish", () => {
+  const games = [0, 0.99].map(mistakeTiming => {
+    let calls = 0;
+    const game = createRandomGame({
+      random: () => ++calls === 2 ? mistakeTiming : 0.5,
+    });
+    startRace(game);
+    return game;
+  });
+  let largestDifference = 0;
+  for (let n = 0; n < 2400 && games.some(game => game.state.scene === "track"); n++) {
+    for (const game of games) game.update(0.05);
+    const difference = Math.hypot(
+      games[0].rival.x - games[1].rival.x, games[0].rival.z - games[1].rival.z
+    );
+    if (n < 120) assert.equal(difference, 0);
+    if (n >= 140 && n < 200) largestDifference = Math.max(largestDifference, difference);
+  }
+  assert.ok(largestDifference > 0.5, "A mistake should visibly alter the line");
+  for (const game of games) {
+    assert.equal(game.state.scene, "finished");
+    assert.equal(game.rival.laps, LAPS_TO_WIN);
+  }
+});
+
+test("reset clears held rival inputs and reactions to the player", () => {
+  const game = createGame();
+  startRace(game);
+  for (let n = 0; n < 80; n++) game.update(0.05);
+  game.reset();
+  assert.deepEqual(game.rival.controls, { forward: 1, turn: 0 });
+  assert.equal(game.rival.intent, "race");
+  const before = { ...game.rival, controls: { ...game.rival.controls } };
+  game.update(0.05);
+  assert.deepEqual(game.rival, before);
+  game.enterTrack();
+  game.update(0.05, 1);
+  assert.deepEqual(game.rival.controls, { forward: 1, turn: 0 });
+  assert.equal(game.rival.walk, 0);
+});
+
+for (const dt of [1 / 120, 1 / 60, 0.05]) {
+  test(`rival respects movement limits and completes three laps at dt=${dt}`, () => {
+    const game = createGame();
+    startRace(game);
+    for (let n = 0; n < 120 / dt && game.state.scene !== "finished"; n++) {
+      const { x, z, yaw } = game.rival;
+      game.update(dt);
+      assert.ok(Math.abs(game.rival.yaw - yaw) <= TURN * dt + 1e-10);
+      assert.ok(Math.hypot(game.rival.x - x, game.rival.z - z) <= RIVAL_SPEED * dt + 1e-10);
+      for (const wall of trackWalls) {
+        const cx = Math.max(wall.minX, Math.min(game.rival.x, wall.maxX));
+        const cz = Math.max(wall.minZ, Math.min(game.rival.z, wall.maxZ));
+        assert.ok(Math.hypot(game.rival.x - cx, game.rival.z - cz) >= R - 1e-10);
+      }
+    }
+    assert.equal(game.state.scene, "finished");
+    assert.equal(game.state.playerWon, false);
+    assert.equal(game.rival.laps, LAPS_TO_WIN);
+    assert.equal(game.state.laps, 0);
+  });
+}
