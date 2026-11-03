@@ -127,9 +127,9 @@ test("active players share authoritative human movement and disconnects end the 
   assert.deepEqual(running.racers.map(({ x, z }) => ({ x, z })),
     first.racers.map(({ x, z }) => ({ x, z })));
   await guest.action("input", { keys: { w: true } });
-  const moved = await host.next("round", data => data.racers[1].z < first.racers[1].z);
-  assert.equal(moved.racers[0].z, first.racers[0].z);
-  assert.ok(moved.racers[1].z < first.racers[1].z);
+  const moved = await host.next("round", data => data.racers[1].x > first.racers[1].x);
+  assert.equal(moved.racers[0].x, first.racers[0].x);
+  assert.ok(moved.racers[1].x > first.racers[1].x);
   guest.disconnect();
   const notice = await host.next("notice");
   assert.match(notice.message, /ended/);

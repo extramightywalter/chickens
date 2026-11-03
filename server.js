@@ -168,7 +168,7 @@ export function createLanServer() {
       return;
     }
     const file = resolve(root, `.${path}`);
-    const publicFile = ["/index.html", "/styles.css", "/oreo portrait.png", "/pillow.glb"].includes(path) ||
+    const publicFile = ["/index.html", "/styles.css", "/oreo portrait.png", "/pillow.glb", "/race-track.glb"].includes(path) ||
       path.startsWith("/js/") || path.startsWith("/assets/");
     if (!publicFile || !file.startsWith(`${root}${sep}`) || path.split("/").some(part => part.startsWith("."))) {
       response.writeHead(404).end("Not found.");

@@ -7,7 +7,7 @@ import {
   DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_XS, FINISH_Z, GATE_HALF_DEPTH,
 } from "../js/doors.js";
 import {
-  LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints, lobbyStructures,
+  LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints, isTrackSupported, lobbyStructures,
 } from "../js/track.js";
 
 function round(minigame, count = 8) {
@@ -37,6 +37,9 @@ test("all minigames support every slot count with distinct spawns and no AI move
       const game = round(minigame, count);
       assert.equal(game.racers.length, count);
       assert.equal(new Set(game.racers.map(racer => `${racer.x},${racer.z}`)).size, count);
+      if (minigame === "track") {
+        for (const racer of game.racers) assert.equal(isTrackSupported(racer.x, racer.z), true);
+      }
       const before = structuredClone(game.racers);
       game.update(2, new Map(game.racers.map(racer => [racer.id, { w: true }])));
       assert.deepEqual(game.racers, before);
@@ -74,10 +77,9 @@ test("any of eight human racers can win the race with a real finish-line crossin
     game.update(3);
     const racer = game.racers[winner];
     Object.assign(racer, {
-      x: START.x, z: START.z + 0.1, yaw: Math.PI,
-      laps: LAPS_TO_WIN - 1, nextCheckpoint: 0,
+      ...checkpoints.at(-1), laps: 0, nextCheckpoint: checkpoints.length - 1,
     });
-    game.update(0.05, new Map([[racer.id, { w: true }]]));
+    game.update(0.05);
     assert.equal(game.state.scene, "finished");
     assert.deepEqual(game.state.winnerIds, [racer.id]);
     const before = structuredClone(game.racers);
@@ -86,14 +88,35 @@ test("any of eight human racers can win the race with a real finish-line crossin
   }
 });
 
+test("any of eight LAN racers can win by touching the red landing under the arch", () => {
+  for (let winner = 0; winner < 8; winner++) {
+    const game = round("track");
+    game.update(3);
+    Object.assign(game.racers[winner], START);
+    game.update(0.05);
+    assert.equal(game.state.scene, "finished");
+    assert.deepEqual(game.state.winnerIds, [game.racers[winner].id]);
+  }
+});
+
 test("track checkpoint order cannot be skipped by returning straight to the finish", () => {
   const game = round("track");
   game.update(3);
-  Object.assign(game.racers[0], { x: START.x, z: START.z + 0.1 });
-  game.update(0.05, new Map([[game.racers[0].id, { w: true }]]));
+  Object.assign(game.racers[0], { ...checkpoints.at(-1), nextCheckpoint: 1 });
+  game.update(0.05);
   assert.equal(game.racers[0].laps, 0);
   assert.equal(game.racers[0].nextCheckpoint, 1);
   assert.ok(checkpoints.length > 1);
+});
+
+test("falling off the race structure eliminates the racer and awards the survivor", () => {
+  const game = round("track", 2);
+  game.update(3);
+  Object.assign(game.racers[0], { x: -1, yaw: Math.PI });
+  game.update(0.05, new Map([[game.racers[0].id, { w: true }]]));
+  assert.equal(game.racers[0].eliminated, true);
+  assert.equal(game.state.scene, "finished");
+  assert.deepEqual(game.state.winnerIds, [game.racers[1].id]);
 });
 
 test("pillow eliminations continue until the last survivor, including simultaneous draws", () => {

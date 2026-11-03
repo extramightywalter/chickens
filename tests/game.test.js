@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { collide, createGame as createRandomGame } from "../js/lobby.js";
+import { collide, createGame as createRandomGame, moveTrackRacer } from "../js/lobby.js";
 import {
   BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, LAPS_TO_WIN, LOBBY_BOUNDS,
   LOBBY_BUILDING_WIDTH, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH,
   LOBBY_COLS, LOBBY_MAP, LOBBY_ROWS, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED,
   SPEED, START, TURN, checkpoints, cols, lobbyEntrances, lobbyStructures,
-  lobbyWalls, rows, trackWalls,
+  TRACK_SURFACE_Y, TRACK_CHECKPOINT_RADIUS, isTrackSupported, lobbyWalls, rows, trackWalls,
+  touchesArchLanding,
 } from "../js/track.js";
 
 function createGame(seed = 1) {
@@ -75,7 +76,8 @@ test("countdown uses elapsed time and grants neither racer a head start", () => 
   assert.equal(game.state.x, START.x - 1.6);
   assert.equal(game.rival.x, START.x + 1.6);
   assert.equal(game.rival.z, game.state.z);
-  const playerZ = game.state.z, rivalZ = game.rival.z;
+  const playerX = game.state.x, playerZ = game.state.z;
+  const rivalX = game.rival.x, rivalZ = game.rival.z;
   game.update(0.05, 1, { w: true });
   assert.equal(game.state.countdown, 2);
   assert.equal(game.state.z, playerZ);
@@ -86,8 +88,8 @@ test("countdown uses elapsed time and grants neither racer a head start", () => 
   assert.equal(game.rival.z, rivalZ);
   assert.equal(game.state.goTimer, 0.7);
   game.update(0.05, 0.7, { w: true });
-  assert.ok(game.state.z < playerZ);
-  assert.ok(game.rival.z < rivalZ);
+  assert.ok(game.state.x > playerX);
+  assert.ok(game.rival.x > rivalX);
   assert.equal(game.state.goTimer, 0);
   assert.equal(RIVAL_SPEED, SPEED);
 });
@@ -118,6 +120,48 @@ test("rendered wall bounds cover exactly the solid map cells", () => {
       assert.equal(covered, MAP[z][x] === "x");
     }
   }
+});
+
+test("the race route defines where the structure supports racers", () => {
+  assert.equal(isTrackSupported(START.x, START.z), true);
+  for (const point of checkpoints) assert.equal(isTrackSupported(point.x, point.z), true);
+  assert.ok(START.x < 0, "The race should start beneath the course arch");
+  assert.ok(checkpoints.at(-1).x > 100, "The finish should be on the far side");
+  assert.ok(checkpoints.length > 1);
+  assert.equal(TRACK_SURFACE_Y, 2.5);
+  assert.equal(TRACK_CHECKPOINT_RADIUS, 2.5);
+  assert.equal(isTrackSupported(-100, START.z), false);
+  assert.equal(isTrackSupported(START.x, -100), false);
+});
+
+test("track movement cannot cross a gap between visible ground tiles", () => {
+  const racer = {
+    x: -16.980095863342285, z: 23.662500143051147, yaw: Math.PI,
+  };
+  assert.equal(isTrackSupported(racer.x, racer.z), true);
+  assert.equal(isTrackSupported(racer.x, 13.662500143051147), true);
+  assert.equal(moveTrackRacer(racer, 10 / SPEED, 1, 0, SPEED), false);
+  assert.ok(racer.z > 13.662500143051147, "Movement must stop at the unsupported tile");
+});
+
+test("racers fall and lose when they leave the race structure", () => {
+  const game = createGame();
+  startRace(game);
+  Object.assign(game.state, { x: -1, yaw: Math.PI });
+  game.update(0.05, 0.05, { w: true });
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.eliminated, true);
+  assert.equal(game.state.playerWon, false);
+});
+
+test("the rival falls off the race structure and gives the player the win", () => {
+  const game = createGame();
+  startRace(game);
+  Object.assign(game.rival, { x: -1, z: START.z, yaw: Math.PI });
+  game.update(0.05, 0.05);
+  assert.equal(game.rival.eliminated, true);
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.playerWon, true);
 });
 
 test("exactly four paintings are wall-backed and face the drivable course", () => {
@@ -331,80 +375,75 @@ test("the lobby model's north arch faces the road and leads to the indoor race b
   assert.ok(BUTTON.z + BUTTON.r < lobby.z + lobby.depth / 2);
 });
 
-test("laps require ordered checkpoints and a forward start-line crossing", () => {
+test("the course starts under the arch and finishes on the opposite side", () => {
   const game = createGame();
   startRace(game);
-  Object.assign(game.state, { x: START.x, z: START.z + 0.1, yaw: Math.PI });
-  game.update(0.05, 0.05, { w: true });
-  assert.equal(game.state.laps, 0);
-  assert.equal(game.state.nextCheckpoint, 1);
+  assert.equal(game.state.x, START.x - 1.6);
+  assert.equal(game.state.yaw, Math.PI / 2);
   for (let n = 1; n < checkpoints.length; n++) {
     Object.assign(game.state, checkpoints[n]);
     game.update(0);
-    assert.equal(game.state.nextCheckpoint, (n + 1) % checkpoints.length);
+    if (n < checkpoints.length - 1) {
+      assert.equal(game.state.scene, "track");
+      assert.equal(game.state.nextCheckpoint, n + 1);
+    }
   }
-  Object.assign(game.state, { x: START.x, z: START.z - 0.1, yaw: 0 });
-  game.update(0.05, 0.05, { w: true });
-  assert.equal(game.state.laps, 0);
-  assert.equal(game.state.nextCheckpoint, 0);
-  game.state.yaw = Math.PI;
-  game.update(0.05, 0.05, { w: true });
-  assert.equal(game.state.laps, 1);
-  assert.equal(game.state.nextCheckpoint, 1);
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.laps, LAPS_TO_WIN);
+  assert.equal(game.state.playerWon, true);
+});
+
+test("touching the red landing under the arch lets either racer win", () => {
+  for (const winner of ["player", "rival"]) {
+    const game = createGame();
+    startRace(game);
+    assert.equal(touchesArchLanding(game.state), false);
+    assert.equal(touchesArchLanding(game.rival), false);
+    Object.assign(winner === "player" ? game.state : game.rival, START);
+    game.update(0);
+    assert.equal(game.state.scene, "finished");
+    assert.equal(game.state.playerWon, winner === "player");
+  }
+});
+
+test("simultaneous contact with the red landing is a draw", () => {
+  const game = createGame();
+  startRace(game);
+  Object.assign(game.state, START);
+  Object.assign(game.rival, START);
+  game.update(0);
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.playerWon, null);
 });
 
 test("player victory freezes racers and reset clears the result", () => {
   const game = createGame();
   startRace(game);
   Object.assign(game.state, {
-    x: START.x, z: START.z + 0.1, yaw: Math.PI,
-    nextCheckpoint: 0, laps: LAPS_TO_WIN - 1,
+    ...checkpoints.at(-1), nextCheckpoint: checkpoints.length - 1,
   });
-  game.update(0.05, 0.05, { w: true });
+  game.update(0);
   assert.equal(game.state.scene, "finished");
   assert.equal(game.state.playerWon, true);
-  const playerZ = game.state.z, rivalZ = game.rival.z;
+  const playerX = game.state.x, rivalX = game.rival.x;
   game.update(0.05, 0.05, { w: true });
-  assert.equal(game.state.z, playerZ);
-  assert.equal(game.rival.z, rivalZ);
+  assert.equal(game.state.x, playerX);
+  assert.equal(game.rival.x, rivalX);
   game.reset();
   assert.equal(game.state.playerWon, null);
 });
 
-test("rival rounds the first corner without visiting its center", () => {
-  const game = createGame();
+test("the rival stays on the flat course and reaches the far-side finish", () => {
+  const game = createRandomGame({ random: () => 0.5 });
   startRace(game);
-  const corner = checkpoints[1];
-  let closest = Infinity;
-  let cutInside = false;
-  for (let n = 0; n < 60; n++) {
+  for (let n = 0; n < 1200 && game.state.scene === "track"; n++) {
     game.update(0.05);
-    const { x, z } = game.rival;
-    const distance = Math.hypot(x - corner.x, z - corner.z);
-    closest = Math.min(closest, distance);
-    if (distance < 2 && x < corner.x - 0.2 && z > corner.z + 0.2) cutInside = true;
+    assert.equal(isTrackSupported(game.rival.x, game.rival.z), true);
   }
-  assert.ok(cutInside, "Rival should turn onto the inside of the corner before reaching it");
-  assert.ok(closest > 0.5, "Rival should not stop at or pivot around the checkpoint");
-});
-
-test("rival chooses different lines on both sides of a straight across laps", () => {
-  let choice = 0.85;
-  const game = createRandomGame({ random: () => choice });
-  startRace(game);
-  const offsets = [[], [], []];
-  for (let n = 0; n < 2400 && game.state.scene === "track"; n++) {
-    choice = game.rival.laps === 1 ? 0.15 : 0.85;
-    game.update(0.05);
-    if (game.rival.target === 2 && game.rival.x < 97 && game.rival.x > 79) {
-      offsets[game.rival.laps].push(game.rival.z - checkpoints[1].z);
-    }
-  }
-  assert.ok(offsets.every(lap => lap.length > 10));
-  assert.ok(Math.min(...offsets.flat()) < -0.1);
-  assert.ok(Math.max(...offsets.flat()) > 0.1);
-  const averages = offsets.map(lap => lap.reduce((sum, value) => sum + value, 0) / lap.length);
-  assert.ok(Math.max(...averages) - Math.min(...averages) > 0.2);
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.playerWon, false);
+  assert.equal(game.rival.laps, LAPS_TO_WIN);
+  assert.ok(game.rival.x > START.x);
 });
 
 test("rival moves forward along its heading rather than sliding sideways", () => {
@@ -419,12 +458,11 @@ test("rival moves forward along its heading rather than sliding sideways", () =>
   }
 });
 
-test("rival holds steering taps and occasionally releases the throttle", () => {
+test("rival holds its steering inputs between reactions", () => {
   const game = createGame();
   startRace(game);
   const dt = 1 / 120;
   const turns = new Set();
-  const throttle = new Set();
   let lastChange = 0;
   for (let n = 0; n < 20 / dt; n++) {
     const previous = { ...game.rival.controls };
@@ -433,77 +471,12 @@ test("rival holds steering taps and occasionally releases the throttle", () => {
     assert.ok([-1, 0, 1].includes(turn));
     assert.ok([0, 1].includes(forward));
     turns.add(turn);
-    throttle.add(forward);
     if (n > 0 && (turn !== previous.turn || forward !== previous.forward)) {
       assert.ok((n - lastChange) * dt >= 0.09, "Inputs should be held between reactions");
       lastChange = n;
     }
   }
   assert.equal(turns.size, 3);
-  assert.equal(throttle.size, 2);
-});
-
-for (const { intent, ahead, side, direction } of [
-  { intent: "pass", ahead: 5, side: 0, direction: 1 },
-  { intent: "dodge", ahead: 1, side: 0.8, direction: -1 },
-  { intent: "defend", ahead: -5, side: 1, direction: 1 },
-  { intent: "defend", ahead: -5, side: -1, direction: -1 },
-]) {
-  test(`rival steers to ${intent} with player offset ${side}`, () => {
-    const game = createRandomGame({ random: () => 0.5 });
-    startRace(game);
-    Object.assign(game.rival, {
-      x: 90, z: 13, yaw: -Math.PI / 2, target: 2, nextCheckpoint: 2,
-    });
-    for (let n = 0; n < 12; n++) {
-      Object.assign(game.state, { x: game.rival.x - ahead, z: 13 + side, yaw: -Math.PI / 2 });
-      game.update(0.05);
-      assert.equal(game.rival.intent, intent);
-    }
-    assert.ok((game.rival.z - 13) * direction > 0.5);
-  });
-}
-
-test("rival ignores distant players and racers facing the opposite direction", () => {
-  for (const { x, yaw } of [
-    { x: 50, yaw: -Math.PI / 2 },
-    { x: 85, yaw: Math.PI / 2 },
-  ]) {
-    const game = createRandomGame({ random: () => 0.5 });
-    startRace(game);
-    Object.assign(game.rival, {
-      x: 90, z: 13, yaw: -Math.PI / 2, target: 2, nextCheckpoint: 2,
-    });
-    Object.assign(game.state, { x, z: 13, yaw });
-    for (let n = 0; n < 12; n++) game.update(0.05);
-    assert.equal(game.rival.intent, "race");
-    assert.equal(game.rival.z, 13);
-  }
-});
-
-test("occasional late steering changes the racing line but recovers to finish", () => {
-  const games = [0, 0.99].map(mistakeTiming => {
-    let calls = 0;
-    const game = createRandomGame({
-      random: () => ++calls === 2 ? mistakeTiming : 0.5,
-    });
-    startRace(game);
-    return game;
-  });
-  let largestDifference = 0;
-  for (let n = 0; n < 2400 && games.some(game => game.state.scene === "track"); n++) {
-    for (const game of games) game.update(0.05);
-    const difference = Math.hypot(
-      games[0].rival.x - games[1].rival.x, games[0].rival.z - games[1].rival.z
-    );
-    if (n < 120) assert.equal(difference, 0);
-    if (n >= 140 && n < 200) largestDifference = Math.max(largestDifference, difference);
-  }
-  assert.ok(largestDifference > 0.5, "A mistake should visibly alter the line");
-  for (const game of games) {
-    assert.equal(game.state.scene, "finished");
-    assert.equal(game.rival.laps, LAPS_TO_WIN);
-  }
 });
 
 test("reset clears held rival inputs and reactions to the player", () => {
@@ -523,19 +496,15 @@ test("reset clears held rival inputs and reactions to the player", () => {
 });
 
 for (const dt of [1 / 120, 1 / 60, 0.05]) {
-  test(`rival respects movement limits and completes three laps at dt=${dt}`, () => {
+  test(`rival respects movement limits and finishes the flat route at dt=${dt}`, () => {
     const game = createGame();
     startRace(game);
-    for (let n = 0; n < 120 / dt && game.state.scene !== "finished"; n++) {
+    for (let n = 0; n < 60 / dt && game.state.scene !== "finished"; n++) {
       const { x, z, yaw } = game.rival;
       game.update(dt);
       assert.ok(Math.abs(game.rival.yaw - yaw) <= TURN * dt + 1e-10);
       assert.ok(Math.hypot(game.rival.x - x, game.rival.z - z) <= RIVAL_SPEED * dt + 1e-10);
-      for (const wall of trackWalls) {
-        const cx = Math.max(wall.minX, Math.min(game.rival.x, wall.maxX));
-        const cz = Math.max(wall.minZ, Math.min(game.rival.z, wall.maxZ));
-        assert.ok(Math.hypot(game.rival.x - cx, game.rival.z - cz) >= R - 1e-10);
-      }
+      assert.equal(isTrackSupported(game.rival.x, game.rival.z), true);
     }
     assert.equal(game.state.scene, "finished");
     assert.equal(game.state.playerWon, false);

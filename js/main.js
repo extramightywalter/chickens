@@ -1,6 +1,6 @@
 import { createGame } from "./lobby.js";
 import { createInput } from "./input.js";
-import { LAPS_TO_WIN } from "./track.js";
+import { checkpoints } from "./track.js";
 import { createWorld } from "./world.js";
 import { createSoundEffects } from "./audio.js";
 import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
@@ -121,6 +121,11 @@ function doorsPassed(racer) {
   return state.doors.filter(door => racer.z > door.z + GATE_HALF_DEPTH).length;
 }
 
+function raceProgress(racer) {
+  return `${Math.round(Math.min(racer.nextCheckpoint, checkpoints.length - 1) /
+    (checkpoints.length - 1) * 100)}%`;
+}
+
 function updateUI() {
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
@@ -133,13 +138,13 @@ function updateUI() {
         state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
           state.minigame === "pillows" ? `${racer.lives} lives` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
-          `${racer.laps}/${LAPS_TO_WIN} laps`}`).join(" | ")
+            raceProgress(racer)}`).join(" | ")
       } | W/S move | A/D turn${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
     : state.minigame === "doors"
       ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn`
     : state.minigame === "pillows"
       ? `PILLOW DODGE | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Survived: ${state.survivalTime.toFixed(1)}s | W/S move | A/D turn${rival.intent === "tired" ? " | Rival is tired!" : ""}`
-      : `RACE | You: ${state.laps} / ${LAPS_TO_WIN} laps | Red rival: ${rival.laps} / ${LAPS_TO_WIN} laps | W/S move | A/D turn | Follow the arrows`;
+      : `RACE | You: ${raceProgress(state)} | Red rival: ${raceProgress(rival)} | W/S move | A/D turn | Follow the arrows`;
   const playing = state.scene === state.minigame;
   countdown.textContent = playing && state.goTimer > 0
     ? "GO!" : String(Math.ceil(state.countdown));

@@ -1,6 +1,7 @@
-import { createGame, moveRacer } from "./lobby.js";
+import { createGame, moveRacer, moveTrackRacer } from "./lobby.js";
 import {
-  CELL, LAPS_TO_WIN, SPEED, START, checkpoints, trackWalls,
+  LAPS_TO_WIN, SPEED, START, TRACK_CHECKPOINT_RADIUS, checkpoints,
+  touchesArchLanding,
 } from "./track.js";
 import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
@@ -31,7 +32,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       z: minigame === "track" ? START.z + row * 2 :
         minigame === "doors" ? -row * 2 :
           Math.cos(index / playerIds.length * Math.PI * 2) * 5,
-      yaw: minigame === "doors" ? 0 : Math.PI,
+      yaw: minigame === "track" ? Math.PI / 2 : minigame === "doors" ? 0 : Math.PI,
       laps: 0, nextCheckpoint: 1, walk: 0, lives: PILLOW_LIVES,
       eliminated: false, doorTeam: index % 2,
       controls: { forward: 0, turn: 0 },
@@ -63,16 +64,21 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       const turn = Number(Boolean(keys.a || keys.arrowleft)) -
         Number(Boolean(keys.d || keys.arrowright));
       racer.controls = { forward, turn };
-      const walls = minigame === "track" ? trackWalls : minigame === "pillows" ? arenaWalls :
+      const walls = minigame === "pillows" ? arenaWalls :
         [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, racer.doorTeam)];
-      moveRacer(racer, dt, forward, turn, SPEED, walls);
+      const onTrack = minigame === "track" ?
+        moveTrackRacer(racer, dt, forward, turn, SPEED) : true;
+      if (minigame === "track" && !onTrack) {
+        racer.eliminated = true;
+        continue;
+      }
+      if (minigame !== "track") moveRacer(racer, dt, forward, turn, SPEED, walls);
       racer.walk = forward ? racer.walk + dt * 11 : 0;
       if (minigame === "track") {
         const point = checkpoints[racer.nextCheckpoint];
-        if (Math.hypot(racer.x - point.x, racer.z - point.z) <= CELL * 2 &&
-          (racer.nextCheckpoint !== 0 || (previous[index].z > START.z && racer.z <= START.z))) {
-          if (racer.nextCheckpoint === 0) racer.laps++;
-          racer.nextCheckpoint = (racer.nextCheckpoint + 1) % checkpoints.length;
+        if (Math.hypot(racer.x - point.x, racer.z - point.z) <= TRACK_CHECKPOINT_RADIUS) {
+          if (racer.nextCheckpoint === checkpoints.length - 1) racer.laps = LAPS_TO_WIN;
+          else racer.nextCheckpoint++;
         }
       }
     }
@@ -82,10 +88,12 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       doorRound.update(state, racers[1], dt, racers);
     }
     const winners = racers.filter(racer => !racer.eliminated &&
-      (minigame === "track" ? racer.laps >= LAPS_TO_WIN : minigame === "doors" && racer.z >= FINISH_Z));
+      (minigame === "track"
+        ? racer.laps >= LAPS_TO_WIN || touchesArchLanding(racer)
+        : minigame === "doors" && racer.z >= FINISH_Z));
     const survivors = racers.filter(racer => !racer.eliminated);
     if (winners.length) finish(winners);
-    else if (minigame !== "track" && survivors.length <= 1) finish(survivors);
+    else if (survivors.length <= 1) finish(survivors);
   }
 
   return { state, racers, update };

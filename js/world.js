@@ -1,14 +1,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { addPaintings } from "./paintings.js";
 import { ARENA, CANNONS, CANNON_MUZZLE, PILLOW_RADIUS, arenaWalls } from "./pillows.js";
 import {
   DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_MODEL_SCALE, DOOR_XS, FINISH_Z, PATH_END_Z,
   PATH_HALF_WIDTH, PATH_START_Z, gateZs, pathWalls,
 } from "./doors.js";
 import {
-  BUTTON, CELL, CHICKEN_SCALE, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
-  START, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows, trackWalls,
+  ARCH_LANDING, BUTTON, CELL, CHICKEN_SCALE, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP,
+  START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
@@ -119,17 +118,40 @@ export async function createWorld() {
     mesh.castShadow = mesh.receiveShadow = true;
     group.add(mesh);
   }
-  for (const wall of trackWalls) addWall(track, wall);
-  await addPaintings(track);
-  const roadMat = new THREE.MeshLambertMaterial({ color: 0xb9a77a });
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-    if (MAP[j][i] === "x") continue;
-    const tile = new THREE.Mesh(new THREE.PlaneGeometry(CELL, CELL), roadMat);
-    tile.rotation.x = -Math.PI / 2;
-    tile.position.set((i + 0.5) * CELL, 0.015, (j + 0.5) * CELL);
-    tile.receiveShadow = true;
-    track.add(tile);
+  const loader = new GLTFLoader();
+  const { scene: raceTrackModel } = await loader.loadAsync(
+    new URL("../race-track.glb", import.meta.url).href
+  );
+  raceTrackModel.scale.setScalar(5);
+  raceTrackModel.rotation.y = Math.PI / 2;
+  const raceTrackBounds = new THREE.Box3().setFromObject(raceTrackModel);
+  const raceTrackCenter = raceTrackBounds.getCenter(new THREE.Vector3());
+  raceTrackModel.position.set(
+    cols * CELL / 2 - raceTrackCenter.x,
+    -raceTrackBounds.min.y,
+    rows * CELL / 2 - raceTrackCenter.z
+  );
+  raceTrackModel.updateMatrixWorld(true);
+  const trackChickenHeights = new Map();
+  const trackChickenFalls = new Map();
+  function trackChickenY(id, walk, eliminated, dt) {
+    if (!eliminated) {
+      trackChickenFalls.delete(id);
+      trackChickenHeights.set(id, TRACK_SURFACE_Y);
+      return (trackChickenHeights.get(id) ?? 0) + Math.abs(Math.sin(walk)) * 0.12;
+    }
+    const fallTime = Math.min(1, (trackChickenFalls.get(id) ?? 0) + dt);
+    trackChickenFalls.set(id, fallTime);
+    if (fallTime >= 1) return null;
+    return (trackChickenHeights.get(id) ?? TRACK_SURFACE_Y) - fallTime * fallTime * 14;
   }
+  raceTrackModel.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+  });
+  track.add(raceTrackModel);
+  const roadMat = new THREE.MeshLambertMaterial({ color: 0xb9a77a });
   for (let j = 0; j < LOBBY_MAP.length; j++) {
     for (let i = 0; i < LOBBY_MAP[j].length; i++) {
       if (LOBBY_MAP[j][i] !== "r") continue;
@@ -143,7 +165,6 @@ export async function createWorld() {
       lobby.add(tile);
     }
   }
-  const loader = new GLTFLoader();
   const { scene: cannonModel } = await loader.loadAsync(
     new URL("../assets/models/cannon.glb", import.meta.url).href
   );
@@ -323,10 +344,14 @@ export async function createWorld() {
     if (structure.type === "lobby") lobbyStructure = structureGroup;
   }));
 
-  const padMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(CELL * 3, 0.1, 0.8), padMat);
-  pad.position.set(START.x, 0.05, START.z);
-  track.add(pad);
+  const arrowMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
+  const landing = new THREE.Mesh(
+    new THREE.BoxGeometry(ARCH_LANDING.halfWidth * 2, 0.06, ARCH_LANDING.halfDepth * 2),
+    new THREE.MeshLambertMaterial({ color: 0xd62828, emissive: 0x581010 })
+  );
+  landing.position.set(ARCH_LANDING.x, TRACK_SURFACE_Y + 0.03, ARCH_LANDING.z);
+  landing.receiveShadow = true;
+  track.add(landing);
 
   const buttonMat = new THREE.MeshLambertMaterial({ color: 0xc0392b });
   const button = new THREE.Mesh(new THREE.CylinderGeometry(BUTTON.r, BUTTON.r, 0.3, 32), buttonMat);
@@ -364,12 +389,12 @@ export async function createWorld() {
   arrowShape.lineTo(0.65, 0.4);
   arrowShape.closePath();
   const arrowGeo = new THREE.ShapeGeometry(arrowShape);
-  for (let n = 0; n < checkpoints.length; n++) {
-    const point = checkpoints[n], next = checkpoints[(n + 1) % checkpoints.length];
-    const arrow = new THREE.Mesh(arrowGeo, padMat);
+  for (let n = 1; n < checkpoints.length - 1; n++) {
+    const point = checkpoints[n], next = checkpoints[n + 1];
+    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
     arrow.rotation.set(-Math.PI / 2, 0, 0);
     arrow.rotateZ(Math.atan2(next.x - point.x, next.z - point.z));
-    arrow.position.set(point.x, 0.03, point.z);
+    arrow.position.set(point.x, TRACK_SURFACE_Y + 0.03, point.z);
     track.add(arrow);
   }
 
@@ -404,6 +429,8 @@ export async function createWorld() {
   function render(state, rival, dt, moving, nearButton, nearLanButton) {
     const pillowGame = state.minigame === "pillows";
     const doorGame = state.minigame === "doors";
+    const trackGame = state.minigame === "track";
+    ground.visible = !trackGame;
     track.visible = state.scene !== "lobby" && !pillowGame && !doorGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
@@ -429,16 +456,24 @@ export async function createWorld() {
     if (pillowGame) cannons.forEach((cannon, index) => {
       cannon.rotation.y = state.cannonYaws[index];
     });
-    rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer;
-    chicken.visible = !state.eliminated;
+    const playerTrackY = trackGame ?
+      trackChickenY("player", state.walk, state.eliminated, dt) : null;
+    const rivalTrackY = trackGame && !state.multiplayer ?
+      trackChickenY("rival", rival.walk, rival.eliminated, dt) : null;
+    rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer &&
+      (!trackGame || !rival.eliminated || rivalTrackY !== null);
+    chicken.visible = !state.eliminated || (trackGame && playerTrackY !== null);
     const opponents = state.multiplayer ? state.racers.filter(racer => racer.id !== state.id) : [];
     lanChickens.forEach((model, index) => {
       const racer = opponents[index];
-      model.visible = Boolean(racer && !racer.eliminated);
+      const trackY = racer && trackGame ?
+        trackChickenY(`lan-${racer.id}`, racer.walk, racer.eliminated, dt) : null;
+      model.visible = Boolean(racer && (!racer.eliminated || (trackGame && trackY !== null)));
       if (!racer) return;
-      model.position.set(racer.x, Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
+      model.position.set(racer.x, trackGame ? trackY ?? 0 :
+        Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
       model.rotation.y = racer.yaw + CHICKEN_YAW_OFFSET;
-      model.rotation.z = racer.controls.forward ? Math.sin(racer.walk) * 0.06 : 0;
+      model.rotation.z = racer.controls.forward && !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0;
     });
     const activePillows = new Set(state.pillows.map(pillow => pillow.id));
     for (const [id, mesh] of pillowMeshes) {
@@ -460,18 +495,21 @@ export async function createWorld() {
     buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
     lanButtonMat.color.setHex(nearLanButton ? 0x55ccff : 0x2288dd);
 
-    chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
+    chicken.position.set(state.x, trackGame ? playerTrackY ?? 0 :
+      Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
     chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
     const rivalMoving = ["track", "pillows", "doors"].includes(state.scene) &&
       dt > 0 && rival.controls.forward !== 0;
-    rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
+    rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
+      rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
 
     const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
     const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
-    target.y = 4.2;
+    const followHeight = trackGame ? trackChickenHeights.get("player") ?? 0 : 0;
+    target.y = followHeight + 4.2;
     if (pillowGame) {
       const height = Math.max(26, 22 / camera.aspect);
       target.set(0, height, height * 0.55);
@@ -481,7 +519,7 @@ export async function createWorld() {
     else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
     if (pillowGame) camera.lookAt(0, 0, 0);
-    else camera.lookAt(state.x, 1.6, state.z);
+    else camera.lookAt(state.x, followHeight + 1.6, state.z);
     rivalIndicator.style.display = state.scene === "lobby" || pillowGame || state.multiplayer ? "none" : "flex";
     if (state.scene !== "lobby" && !pillowGame && !state.multiplayer) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);

@@ -3,23 +3,25 @@ export const WALL_H = 3;
 export const R = 0.7;
 export const SPEED = 9;
 export const TURN = 2.6;
-export const LAPS_TO_WIN = 3;
+export const LAPS_TO_WIN = 1;
+export const TRACK_CHECKPOINT_RADIUS = 2.5;
+export const TRACK_SURFACE_Y = 2.5;
+const TRACK_EDGE_TOLERANCE = 0.1;
 export const RIVAL_SPEED = SPEED;
 export const CHICKEN_SCALE = 0.7;
 // Width of chicken.glb at the player's rendered scale.
 export const CHICKEN_WIDTH = 1.8561395 * CHICKEN_SCALE;
 export const LOBBY_BUILDING_WIDTH = CHICKEN_WIDTH * 10;
 
-// Follow the sketch's long perimeter; the solid infield seals every shortcut.
-export const ROUTE = [
+const SKETCH_ROUTE = [
   [51, 10], [51, 6], [37, 6], [34, 2], [19, 2], [16, 5],
   [15, 11], [3, 11], [3, 17], [28, 17], [33, 14], [51, 14],
 ];
 export const cols = 55, rows = 21;
 export const MAP = Array.from({ length: rows }, () => Array(cols).fill("x"));
-for (let n = 0; n < ROUTE.length; n++) {
-  const [ax, az] = ROUTE[n];
-  const [bx, bz] = ROUTE[(n + 1) % ROUTE.length];
+for (let n = 0; n < SKETCH_ROUTE.length; n++) {
+  const [ax, az] = SKETCH_ROUTE[n];
+  const [bx, bz] = SKETCH_ROUTE[(n + 1) % SKETCH_ROUTE.length];
   const steps = Math.ceil(Math.hypot(bx - ax, bz - az) * 4);
   for (let t = 0; t <= steps; t++) {
     const x = Math.round(ax + (bx - ax) * t / steps);
@@ -29,10 +31,86 @@ for (let n = 0; n < ROUTE.length; n++) {
     }
   }
 }
-export const checkpoints = ROUTE.map(([x, z]) => ({
-  x: (x + 0.5) * CELL, z: (z + 0.5) * CELL,
-}));
+
+const TRACK_TILE_SIZE = 5;
+const TRACK_COLUMNS = 8;
+const TRACK_ROWS = 38;
+// Tile coordinates and origins follow the centered, rotated race-track model.
+const TRACK_SOURCE_X_MIN = -3.5;
+const TRACK_SOURCE_Z_MIN = -19.7;
+const TRACK_WORLD_X_ORIGIN = 54.019904136657715;
+const TRACK_WORLD_Z_ORIGIN = 23.662500143051147;
+// One bit per source-model tile; elevated blocks are intentionally excluded.
+const TRACK_TILE_MASKS = "3c3c343c18283830203c3c243c2c2838fe828282828282c66c3810302038083820380818103c";
+
+function trackTileExists(column, row) {
+  if (column < 0 || column >= TRACK_COLUMNS || row < 0 || row >= TRACK_ROWS) return false;
+  const mask = Number.parseInt(TRACK_TILE_MASKS.slice(row * 2, row * 2 + 2), 16);
+  return Boolean(mask & (1 << column));
+}
+
+function findTrackRoute() {
+  const start = [4, 0], finish = [4, TRACK_ROWS - 1];
+  const key = ([column, row]) => `${column},${row}`;
+  const previous = new Map([[key(start), null]]);
+  const queue = [start];
+  for (let index = 0; index < queue.length && !previous.has(key(finish)); index++) {
+    const [column, row] = queue[index];
+    for (const next of [
+      [column, row + 1], [column + 1, row], [column, row - 1], [column - 1, row],
+    ]) {
+      if (!trackTileExists(...next) || previous.has(key(next))) continue;
+      previous.set(key(next), [column, row]);
+      queue.push(next);
+    }
+  }
+  if (!previous.has(key(finish))) throw new Error("Race track has no flat route from the arch to the finish");
+
+  const tiles = [];
+  for (let tile = finish; tile; tile = previous.get(key(tile))) tiles.push(tile);
+  tiles.reverse();
+  return tiles.map(([column, row]) => {
+    const sourceX = TRACK_SOURCE_X_MIN + column + 0.5;
+    const sourceZ = TRACK_SOURCE_Z_MIN + row + 0.5;
+    return {
+      x: TRACK_WORLD_X_ORIGIN + sourceZ * TRACK_TILE_SIZE,
+      z: TRACK_WORLD_Z_ORIGIN - sourceX * TRACK_TILE_SIZE,
+    };
+  });
+}
+
+export const ROUTE = findTrackRoute();
+export const checkpoints = ROUTE;
 export const START = checkpoints[0];
+export const ARCH_LANDING = {
+  x: START.x, z: START.z, halfWidth: 0.8, halfDepth: 1.1,
+};
+
+export function touchesArchLanding(racer) {
+  const closestX = Math.max(ARCH_LANDING.x - ARCH_LANDING.halfWidth,
+    Math.min(racer.x, ARCH_LANDING.x + ARCH_LANDING.halfWidth));
+  const closestZ = Math.max(ARCH_LANDING.z - ARCH_LANDING.halfDepth,
+    Math.min(racer.z, ARCH_LANDING.z + ARCH_LANDING.halfDepth));
+  return Math.hypot(racer.x - closestX, racer.z - closestZ) <= R;
+}
+
+export function isTrackSupported(x, z) {
+  const sourceX = (TRACK_WORLD_Z_ORIGIN - z) / TRACK_TILE_SIZE;
+  const sourceZ = (x - TRACK_WORLD_X_ORIGIN) / TRACK_TILE_SIZE;
+  const column = Math.floor(sourceX - TRACK_SOURCE_X_MIN);
+  const row = Math.floor(sourceZ - TRACK_SOURCE_Z_MIN);
+  const tolerance = TRACK_EDGE_TOLERANCE / TRACK_TILE_SIZE;
+  for (let candidateRow = row - 1; candidateRow <= row + 1; candidateRow++) {
+    for (let candidateColumn = column - 1; candidateColumn <= column + 1; candidateColumn++) {
+      if (trackTileExists(candidateColumn, candidateRow) &&
+        sourceX >= TRACK_SOURCE_X_MIN + candidateColumn - tolerance &&
+        sourceX <= TRACK_SOURCE_X_MIN + candidateColumn + 1 + tolerance &&
+        sourceZ >= TRACK_SOURCE_Z_MIN + candidateRow - tolerance &&
+        sourceZ <= TRACK_SOURCE_Z_MIN + candidateRow + 1 + tolerance) return true;
+    }
+  }
+  return false;
+}
 
 export const LOBBY_BOUNDS = { minX: -70, maxX: 38, minZ: 0, maxZ: 72 };
 export const LOBBY_MAP = [

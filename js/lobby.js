@@ -1,6 +1,6 @@
 import {
-  BUTTON, CELL, LAN_BUTTON, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
-  checkpoints, lobbyWalls, trackWalls,
+  BUTTON, LAN_BUTTON, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
+  TRACK_CHECKPOINT_RADIUS, checkpoints, isTrackSupported, lobbyWalls, touchesArchLanding,
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 import { DOORS_START, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
@@ -36,6 +36,20 @@ export function moveRacer(racer, dt, forward, turn, speed, walls) {
   [racer.x, racer.z] = collide(racer.x, racer.z + Math.cos(racer.yaw) * distance, walls);
 }
 
+export function moveTrackRacer(racer, dt, forward, turn, speed) {
+  racer.yaw += turn * TURN * dt;
+  if (!forward || dt === 0) return isTrackSupported(racer.x, racer.z);
+  const distance = forward * speed * dt;
+  const steps = Math.ceil(Math.abs(distance) / 0.2);
+  const step = distance / steps;
+  for (let index = 0; index < steps; index++) {
+    racer.x += Math.sin(racer.yaw) * step;
+    racer.z += Math.cos(racer.yaw) * step;
+    if (!isTrackSupported(racer.x, racer.z)) return false;
+  }
+  return true;
+}
+
 export function createGame({ random = Math.random } = {}) {
   const state = {};
   const rival = {};
@@ -53,15 +67,11 @@ export function createGame({ random = Math.random } = {}) {
       multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
     });
     Object.assign(rival, {
-      x: START.x + 1.6, z: START.z, yaw: Math.PI,
+      x: START.x + 1.6, z: START.z, yaw: Math.PI / 2,
       laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
-      controls: { forward: 1, turn: 0 }, intent: "race", lives: 0,
+      controls: { forward: 1, turn: 0 }, intent: "race", lives: 0, eliminated: false,
     });
-    driver = {
-      reaction: 0, line: 0, lane: 0, laneTimer: 0,
-      lap: 0, lookAhead: 4, mistakeIn: 7 + random() * 6,
-      mistake: 0, mistakeSide: 0,
-    };
+    driver = { reaction: 0 };
   }
 
   function nearButton() {
@@ -78,7 +88,7 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   function enterTrack() {
-    setScene("countdown", { x: START.x - 1.6, z: START.z }, Math.PI);
+    setScene("countdown", { x: START.x - 1.6, z: START.z }, Math.PI / 2);
     state.minigame = "track";
     state.countdown = 3;
   }
@@ -118,105 +128,42 @@ export function createGame({ random = Math.random } = {}) {
     state.playerWon = playerWon;
   }
 
-  function updateLaps(racer, previousZ) {
+  function updateLaps(racer, radius = TRACK_CHECKPOINT_RADIUS) {
     const point = checkpoints[racer.nextCheckpoint];
-    if (Math.hypot(racer.x - point.x, racer.z - point.z) > CELL * 2) return;
-    if (racer.nextCheckpoint === 0) {
-      if (previousZ <= START.z || racer.z > START.z) return;
+    if (Math.hypot(racer.x - point.x, racer.z - point.z) > radius) return;
+    if (racer.nextCheckpoint === checkpoints.length - 1) {
       racer.laps++;
-      if (racer.laps === LAPS_TO_WIN) finishRace(racer === state);
+      if (racer.laps >= LAPS_TO_WIN) finishRace(racer === state);
+      return;
     }
-    racer.nextCheckpoint = (racer.nextCheckpoint + 1) % checkpoints.length;
+    racer.nextCheckpoint++;
   }
 
   function chooseRivalControls() {
-    const lookAhead = driver.lookAhead - (driver.mistake > 0 ? 0.8 : 0);
-    let target = checkpoints[rival.target];
-    let previous = checkpoints[(rival.target + checkpoints.length - 1) % checkpoints.length];
-    let dx = target.x - previous.x, dz = target.z - previous.z;
-    let length = Math.hypot(dx, dz);
-    let along = ((rival.x - previous.x) * dx + (rival.z - previous.z) * dz) / length;
-    if (along >= length || Math.hypot(target.x - rival.x, target.z - rival.z) < lookAhead * 0.6) {
-      rival.target = (rival.target + 1) % checkpoints.length;
-      previous = target;
-      target = checkpoints[rival.target];
-      dx = target.x - previous.x;
-      dz = target.z - previous.z;
-      length = Math.hypot(dx, dz);
-      along = ((rival.x - previous.x) * dx + (rival.z - previous.z) * dz) / length;
-    }
-
-    // Aim ahead along the course so steering starts before a corner.
-    let ahead = Math.max(0, Math.min(length, along)) + lookAhead;
-    if (ahead > length) {
-      ahead -= length;
-      previous = target;
-      target = checkpoints[(rival.target + 1) % checkpoints.length];
-      dx = target.x - previous.x;
-      dz = target.z - previous.z;
-      length = Math.hypot(dx, dz);
-    }
-    let lane = driver.line + (driver.mistake > 0 ? driver.mistakeSide * 0.5 : 0);
-    const playerX = state.x - rival.x, playerZ = state.z - rival.z;
-    const playerAhead = (playerX * dx + playerZ * dz) / length;
-    const playerSide = (playerX * dz - playerZ * dx) / length;
-    const rivalLane = ((rival.x - previous.x) * dz - (rival.z - previous.z) * dx) / length;
-    const sameDirection = Math.sin(state.yaw) * dx / length + Math.cos(state.yaw) * dz / length > 0.5;
-    rival.intent = "race";
-    if (sameDirection && Math.abs(playerSide) < 2.5 && Math.hypot(playerX, playerZ) < 8) {
-      if (playerAhead >= -1.5) {
-        rival.intent = playerAhead < 2 ? "dodge" : "pass";
-        lane = rivalLane + playerSide > 0 ? -1.15 : 1.15;
-      } else {
-        rival.intent = "defend";
-        lane = Math.max(-0.9, Math.min(0.9, rivalLane + playerSide));
-      }
-    }
-    const laneStep = rival.intent === "dodge" ? 0.6 : 0.35;
-    driver.lane += Math.max(-laneStep, Math.min(laneStep, lane - driver.lane));
-    const laneOffset = driver.lane;
-    const aimX = previous.x + dx / length * ahead + dz / length * laneOffset;
-    const aimZ = previous.z + dz / length * ahead - dx / length * laneOffset;
-    const desiredYaw = Math.atan2(aimX - rival.x, aimZ - rival.z);
+    rival.target = rival.nextCheckpoint;
+    const target = checkpoints[rival.nextCheckpoint];
+    const desiredYaw = Math.atan2(target.x - rival.x, target.z - rival.z);
     const error = Math.atan2(Math.sin(desiredYaw - rival.yaw), Math.cos(desiredYaw - rival.yaw));
-    // Hold actual key-like inputs between reactions instead of steering perfectly every frame.
     driver.reaction += 0.1 + random() * 0.06;
-    const deadZone = TURN * 0.05;
-    rival.controls.turn = Math.abs(error) > deadZone ? Math.sign(error) : 0;
-    const liftForTurn = Math.abs(error) > 0.8 && random() < 0.45;
-    rival.controls.forward = liftForTurn || random() < 0.025 ? 0 : 1;
+    rival.controls.turn = Math.abs(error) > TURN * 0.05 ? Math.sign(error) : 0;
+    rival.controls.forward = Math.abs(error) > 1.3 && random() < 0.35 ? 0 : 1;
   }
 
   function moveRival(dt) {
     if (dt === 0) return;
     driver.reaction -= dt;
-    driver.laneTimer -= dt;
-    driver.mistakeIn -= dt;
-    driver.mistake = Math.max(0, driver.mistake - dt);
-    if (driver.laneTimer <= 0 || driver.lap !== rival.laps) {
-      driver.line = (random() - 0.5) * 1.4;
-      driver.laneTimer = 2 + random() * 3;
-      if (driver.lap !== rival.laps) {
-        driver.lap = rival.laps;
-        driver.lookAhead = 3.8 + random() * 0.6;
-      }
-    }
-    const corner = checkpoints[rival.target];
-    if (driver.mistakeIn <= 0 && Math.hypot(corner.x - rival.x, corner.z - rival.z) < 5) {
-      driver.mistake = 0.35 + random() * 0.2;
-      driver.mistakeSide = random() < 0.5 ? -1 : 1;
-      driver.mistakeIn = 7 + random() * 6;
-    }
     if (driver.reaction <= 0) chooseRivalControls();
-    const previousZ = rival.z;
-    moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, RIVAL_SPEED, trackWalls);
-    updateLaps(rival, previousZ);
+    if (!moveTrackRacer(rival, dt, rival.controls.forward, rival.controls.turn, RIVAL_SPEED)) {
+      rival.eliminated = true;
+      finishRace(true);
+      return;
+    }
+    updateLaps(rival, TRACK_CHECKPOINT_RADIUS + 1.5);
     if (rival.controls.forward) rival.walk += dt * 11;
   }
 
   function update(dt, elapsed = dt, keys = {}) {
     let moving = false;
-    const previousZ = state.z;
     if (state.scene === "countdown") {
       state.countdown = Math.max(0, state.countdown - elapsed);
       if (state.countdown === 0) {
@@ -238,14 +185,19 @@ export function createGame({ random = Math.random } = {}) {
       const walls = state.scene === "lobby" ? lobbyWalls :
         state.scene === "pillows" ? arenaWalls :
         state.scene === "doors" ? [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, "player")] :
-        trackWalls;
+        [];
       const previousPlayer = { x: state.x, z: state.z };
       const previousRival = { x: rival.x, z: rival.z };
-      moveRacer(state, dt, fwd, turn, SPEED, walls);
       if (state.scene === "track") {
-        updateLaps(state, previousZ);
+        if (!moveTrackRacer(state, dt, fwd, turn, SPEED)) {
+          state.eliminated = true;
+          finishRace(false);
+        } else updateLaps(state);
         if (state.scene === "track") moveRival(dt);
-      } else if (state.scene === "pillows") {
+      } else {
+        moveRacer(state, dt, fwd, turn, SPEED, walls);
+      }
+      if (state.scene === "pillows") {
         pillowRound.chooseControls(state, rival, dt);
         moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, walls);
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
@@ -256,6 +208,13 @@ export function createGame({ random = Math.random } = {}) {
         moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, rivalWalls);
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
         doorRound.update(state, rival, dt);
+      }
+      if (state.scene === "track") {
+        const playerTouched = touchesArchLanding(state);
+        const rivalTouched = touchesArchLanding(rival);
+        if (playerTouched || rivalTouched) {
+          finishRace(playerTouched === rivalTouched ? null : playerTouched);
+        }
       }
     }
     state.walk = moving ? state.walk + dt * 11 : 0;
