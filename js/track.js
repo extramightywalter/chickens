@@ -113,6 +113,12 @@ export const BUTTON = {
   z: lobbyStructure.z,
   r: 1.8,
 };
+const lanStructure = lobbyStructures.find(({ type }) => type === "laness");
+export const LAN_BUTTON = {
+  x: lanStructure.x + lanStructure.width / 2 - 2,
+  z: lanStructure.z,
+  r: 1.2,
+};
 
 const LOBBY_WALL_THICKNESS = 0.2;
 function entrancePoint(structure) {

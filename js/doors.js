@@ -44,7 +44,8 @@ export function doorLeafWall(gate, side) {
 
 // Doors locked to one racer stay solid for them no matter how far they are open.
 export function lockedWalls(doors, owner) {
-  return doors.map(gate => doorLeafWall(gate, owner === "player" ? 1 - gate.playerSide : gate.playerSide));
+  return doors.map(gate => doorLeafWall(gate,
+    owner === "player" || owner === 0 ? 1 - gate.playerSide : gate.playerSide));
 }
 
 export function createDoorRound(random) {
@@ -108,13 +109,16 @@ export function createDoorRound(random) {
     return Math.hypot(racer.x - cx, racer.z - cz) < R + 0.15;
   }
 
-  function moveMonster(state, rival, dt) {
+  function moveMonster(state, rival, dt, racers = [state, rival]) {
     const monster = state.monster;
-    const target = state.z <= rival.z ? state : rival;
+    const active = racers.filter(racer => !racer.eliminated);
+    if (active.length === 0) return;
+    const target = active.reduce((last, racer) => racer.z < last.z ? racer : last);
     let aimX = target.x, aimZ = target.z;
     const gate = state.doors.find(g => monster.z < g.z + GATE_HALF_DEPTH + 1);
     if (gate && target.z > gate.z - GATE_HALF_DEPTH) {
-      const doorX = DOOR_XS[target === state ? gate.playerSide : rivalSide(gate)];
+      const team = target.doorTeam ?? (target === state ? 0 : 1);
+      const doorX = DOOR_XS[team === 0 ? gate.playerSide : rivalSide(gate)];
       aimX = doorX;
       aimZ = Math.abs(monster.x - doorX) < 0.4 || monster.z > gate.z - GATE_HALF_DEPTH
         ? gate.z + GATE_HALF_DEPTH + 2 : gate.z - GATE_HALF_DEPTH - 1.5;
@@ -130,22 +134,32 @@ export function createDoorRound(random) {
     monster.walk += dt * 8;
   }
 
-  function update(state, rival, dt) {
+  function update(state, rival, dt, racers = [state, rival]) {
     if (dt === 0) return;
-    moveMonster(state, rival, dt);
+    moveMonster(state, rival, dt, racers);
     for (const gate of state.doors) {
-      const owners = [gate.playerSide === 0 ? state : rival, gate.playerSide === 1 ? state : rival];
+      const active = racers.filter(racer => !racer.eliminated);
+      const owners = [0, 1].map(side => active.filter(racer =>
+        ((racer.doorTeam ?? (racer === state ? 0 : 1)) === 0 ?
+          gate.playerSide : rivalSide(gate)) === side));
       for (const side of [0, 1]) {
         const x = DOOR_XS[side], z = gate.z + DOOR_LEAF_OFFSET;
         const near = racer => racer.z < gate.z + GATE_HALF_DEPTH + 1.5 &&
           Math.hypot(racer.x - x, racer.z - z) < OPEN_DISTANCE;
-        const stranger = owners[1 - side];
         gate.rattle[side] = Math.max(0, gate.rattle[side] - dt);
         // A locked door slams shut and rattles when the wrong chicken bumps it.
-        const bumped = touchingLeaf(stranger, gate, side);
+        const bumped = owners[1 - side].some(racer => touchingLeaf(racer, gate, side));
         if (bumped) gate.rattle[side] = 0.3;
-        const opening = !bumped && (near(owners[side]) || near(state.monster));
+        const opening = !bumped && (owners[side].some(near) || near(state.monster));
         gate.open[side] = Math.max(0, Math.min(1, gate.open[side] + (opening ? OPEN_RATE : -OPEN_RATE * 2) * dt));
+      }
+      if (state.multiplayer) {
+        for (const racer of racers) {
+          if (Math.hypot(racer.x - state.monster.x, racer.z - state.monster.z) < R + MONSTER_RADIUS) {
+            racer.eliminated = true;
+          }
+        }
+        return;
       }
     }
     const playerCaught = Math.hypot(state.x - state.monster.x, state.z - state.monster.z) < R + MONSTER_RADIUS;

@@ -36,6 +36,33 @@
     <button id="close-menu" class="menu-cancel" type="button">Cancel</button>
   </section>
 </div>
+<div id="lan-menu" class="menu-overlay" hidden>
+  <section class="menu-panel" role="dialog" aria-modal="true" aria-labelledby="lan-title">
+    <h1 id="lan-title">LAN games</h1>
+    <p id="lan-status" role="status" aria-live="polite"></p>
+    <div id="lan-options" class="menu-options">
+      <button id="lan-host" type="button">Host a game</button>
+      <button id="lan-play" type="button">Play a game</button>
+    </div>
+    <form id="lan-settings" class="menu-options" hidden>
+      <label for="lan-selection">Minigame</label>
+      <select id="lan-selection" name="selection"></select>
+      <label for="lan-slots">Slots (including you)</label>
+      <select id="lan-slots" name="slots">
+        <option>2</option><option>3</option><option>4</option><option>5</option>
+        <option>6</option><option>7</option><option>8</option>
+      </select>
+      <button type="submit">Create game</button>
+    </form>
+    <div id="lan-games" class="menu-options" hidden></div>
+    <div id="lan-waiting" hidden>
+      <p>The game starts automatically when every slot is full.</p>
+      <ol id="lan-members"></ol>
+    </div>
+    <button id="lan-back" class="menu-cancel" type="button" hidden>Back</button>
+    <button id="lan-close" class="menu-cancel" type="button">Cancel</button>
+  </section>
+</div>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",

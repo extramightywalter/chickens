@@ -7,7 +7,7 @@ import {
   PATH_HALF_WIDTH, PATH_START_Z, gateZs, pathWalls,
 } from "./doors.js";
 import {
-  BUTTON, CELL, CHICKEN_SCALE, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
+  BUTTON, CELL, CHICKEN_SCALE, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
   START, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows, trackWalls,
 } from "./track.js";
 
@@ -333,6 +333,30 @@ export async function createWorld() {
   lobbyStructure.updateWorldMatrix(true, false);
   button.position.copy(lobbyStructure.worldToLocal(new THREE.Vector3(BUTTON.x, 0.15, BUTTON.z)));
   lobbyStructure.add(button);
+  const lanButtonMat = new THREE.MeshLambertMaterial({ color: 0x2288dd });
+  const lanButton = new THREE.Mesh(
+    new THREE.CylinderGeometry(LAN_BUTTON.r, LAN_BUTTON.r, 0.3, 32), lanButtonMat
+  );
+  lanButton.position.set(LAN_BUTTON.x, 0.15, LAN_BUTTON.z);
+  lobby.add(lanButton);
+  const signCanvas = document.createElement("canvas");
+  signCanvas.width = 512;
+  signCanvas.height = 128;
+  const signContext = signCanvas.getContext("2d");
+  signContext.fillStyle = "#22243a";
+  signContext.fillRect(0, 0, 512, 128);
+  signContext.fillStyle = "#ffffff";
+  signContext.font = "bold 42px sans-serif";
+  signContext.textAlign = "center";
+  signContext.fillText("LAN: HOST / JOIN", 256, 58);
+  signContext.font = "30px sans-serif";
+  signContext.fillText("Press E at blue button", 256, 104);
+  const lanSign = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(signCanvas), depthTest: false,
+  }));
+  lanSign.position.set(LAN_BUTTON.x, 3.5, LAN_BUTTON.z);
+  lanSign.scale.set(6, 1.5, 1);
+  lobby.add(lanSign);
 
   const arrowShape = new THREE.Shape();
   arrowShape.moveTo(0, -0.8);
@@ -355,6 +379,12 @@ export async function createWorld() {
   const chicken = createChicken(chickenModel);
   const rivalChicken = createChicken(chickenModel, true);
   scene.add(chicken, rivalChicken);
+  const lanChickens = Array.from({ length: 7 }, () => {
+    const model = createChicken(chickenModel, true);
+    model.visible = false;
+    scene.add(model);
+    return model;
+  });
   const camPos = new THREE.Vector3();
   const rivalIndicator = document.getElementById("rival-indicator");
   const cameraDirection = new THREE.Vector3();
@@ -371,7 +401,7 @@ export async function createWorld() {
     );
   }
 
-  function render(state, rival, dt, moving, nearButton) {
+  function render(state, rival, dt, moving, nearButton, nearLanButton) {
     const pillowGame = state.minigame === "pillows";
     const doorGame = state.minigame === "doors";
     track.visible = state.scene !== "lobby" && !pillowGame && !doorGame;
@@ -399,7 +429,17 @@ export async function createWorld() {
     if (pillowGame) cannons.forEach((cannon, index) => {
       cannon.rotation.y = state.cannonYaws[index];
     });
-    rivalChicken.visible = state.scene !== "lobby";
+    rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer;
+    chicken.visible = !state.eliminated;
+    const opponents = state.multiplayer ? state.racers.filter(racer => racer.id !== state.id) : [];
+    lanChickens.forEach((model, index) => {
+      const racer = opponents[index];
+      model.visible = Boolean(racer && !racer.eliminated);
+      if (!racer) return;
+      model.position.set(racer.x, Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
+      model.rotation.y = racer.yaw + CHICKEN_YAW_OFFSET;
+      model.rotation.z = racer.controls.forward ? Math.sin(racer.walk) * 0.06 : 0;
+    });
     const activePillows = new Set(state.pillows.map(pillow => pillow.id));
     for (const [id, mesh] of pillowMeshes) {
       if (activePillows.has(id)) continue;
@@ -418,6 +458,7 @@ export async function createWorld() {
       mesh.rotation.set(0.15, Math.atan2(pillow.vx, pillow.vz), 0);
     }
     buttonMat.color.setHex(nearButton ? 0xff4757 : 0xc0392b);
+    lanButtonMat.color.setHex(nearLanButton ? 0x55ccff : 0x2288dd);
 
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
@@ -441,8 +482,8 @@ export async function createWorld() {
     camera.position.copy(camPos);
     if (pillowGame) camera.lookAt(0, 0, 0);
     else camera.lookAt(state.x, 1.6, state.z);
-    rivalIndicator.style.display = state.scene === "lobby" || pillowGame ? "none" : "flex";
-    if (state.scene !== "lobby" && !pillowGame) {
+    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || state.multiplayer ? "none" : "flex";
+    if (state.scene !== "lobby" && !pillowGame && !state.multiplayer) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
       camera.getWorldDirection(cameraDirection);
       const behind = direction.dot(cameraDirection) < 0;

@@ -90,16 +90,17 @@ export function createPillowRound(random) {
     rival.controls.forward = Math.abs(error) < 1 ? 1 : 0;
   }
 
-  function update(state, rival, dt, previousPlayer, previousRival) {
+  function update(state, rival, dt, previousPlayer, previousRival,
+    racers = [state, rival], previous = [previousPlayer, previousRival]) {
     if (dt === 0) return;
     state.survivalTime += dt;
     const hits = [];
     for (const pillow of state.pillows) {
-      const playerHit = hitTime(pillow, state, previousPlayer, dt);
-      const rivalHit = hitTime(pillow, rival, previousRival, dt);
-      const time = Math.min(playerHit, rivalHit);
+      const times = racers.map((racer, index) => racer.eliminated ? Infinity :
+        hitTime(pillow, racer, previous[index], dt));
+      const time = Math.min(...times);
       if (Number.isFinite(time)) {
-        hits.push({ pillow, time, player: playerHit === time, rival: rivalHit === time });
+        hits.push({ pillow, time, racers: racers.filter((_, index) => times[index] === time) });
       }
       pillow.x += pillow.vx * dt;
       pillow.z += pillow.vz * dt;
@@ -111,9 +112,15 @@ export function createPillowRound(random) {
       do {
         const hit = hits[i++];
         consumed.add(hit.pillow);
-        if (hit.player) state.lives = Math.max(0, state.lives - 1);
-        if (hit.rival) rival.lives = Math.max(0, rival.lives - 1);
+        for (const racer of hit.racers) {
+          racer.lives = Math.max(0, racer.lives - 1);
+          if (state.multiplayer && racer.lives === 0) racer.eliminated = true;
+        }
       } while (i < hits.length && hits[i].time === time);
+      if (state.multiplayer) {
+        if (racers.filter(racer => !racer.eliminated).length <= 1) break;
+        continue;
+      }
       if (state.lives === 0 || rival.lives === 0) {
         state.scene = "finished";
         state.playerWon = state.lives === rival.lives ? null : rival.lives === 0;
@@ -128,7 +135,9 @@ export function createPillowRound(random) {
     spawnIn -= dt;
     if (spawnIn > 0) return;
     spawnIn += Math.max(0.35, 1 - state.survivalTime * 0.02);
-    const target = nextId % 2 === 0 ? state : rival;
+    const targets = racers.filter(racer => !racer.eliminated);
+    if (targets.length === 0) return;
+    const target = targets[nextId % targets.length];
     const cannonIndex = Math.floor(random() * CANNONS.length);
     const cannon = CANNONS[cannonIndex];
     const distance = Math.hypot(target.x - cannon.x, target.z - cannon.z);

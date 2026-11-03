@@ -65,10 +65,47 @@ Laness stands to the right of the starting player, beside a road connected to
 the spawn by a small side road. Its entire front and back are open for walking
 through; only its side walls block movement.
 
+## LAN games (2-8 players)
+
+For real multiplayer, one computer runs the included Node.js server (Node.js 18
+or newer, no packages to install):
+
+```sh
+npm start
+```
+
+The host opens <http://localhost:8000>. Other players on the same local network
+open `http://<host-computer-LAN-IP>:8000`. Allow TCP port 8000 through the host's
+firewall if needed. Set `PORT` to use another port. All players must use the
+same server; GitHub Pages and the Python static server support solo games only.
+Three.js still loads from the CDN, so each device needs internet access.
+
+Walk into Laness and go to the **blue button on its right side**, then press
+**E**. Choose **Host a game**, select **Random** or any of the same three
+minigames offered at the red button, and choose **2-8 slots**. The host fills
+the first slot. Other players choose **Play a game** and click a game in the
+live list to join. The shared three-second countdown starts automatically
+when the final slot fills; there are no AI players or extra Start buttons.
+
+All chickens, controls, hazards, and results are synchronized by the server.
+Race is first to three laps. Pillow Dodge eliminates chickens at zero lives
+and continues until one remains. Door Dash assigns alternating players to
+opposite secret doors at each gate; caught chickens are eliminated, and the
+first finisher (or last survivor) wins. Simultaneous winners share a victory;
+simultaneous final eliminations are a draw.
+
+Leave a waiting room to free your slot; if the host leaves, the room closes.
+If anyone disconnects during a round, it ends for everyone with a notice.
+Press Enter after a round to leave and return to the LAN button. The original
+red-button games against the AI rival are unchanged.
+
 ## Structure
 
 - `index.html` and `styles.css`: page markup and presentation.
 - `js/main.js`: startup, UI updates, and animation loop.
+- `server.js`: static game server, LAN room discovery, membership, and authoritative rounds.
+- `js/lan-client.js` and `js/lan-menu.js`: LAN connection, host/join menus, and live slots.
+- `js/lan-game.js`: 2-8 human-player rounds using the shared minigame rules and hazards.
 - `js/input.js`: keyboard state and focus handling.
 - `js/audio.js`: generated countdown, start, and chicken sounds.
 - `js/lobby.js`: movement, collisions, countdown, rival AI, and race rules;

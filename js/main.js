@@ -4,6 +4,7 @@ import { LAPS_TO_WIN } from "./track.js";
 import { createWorld } from "./world.js";
 import { createSoundEffects } from "./audio.js";
 import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
+import { createLanMenu } from "./lan-menu.js";
 
 const game = createGame();
 const world = await createWorld();
@@ -18,6 +19,28 @@ const menuOptions = document.getElementById("menu-options");
 const minigameOptions = document.getElementById("minigame-options");
 const menuTitle = document.getElementById("menu-title");
 let menuStep = null;
+const lanMenu = createLanMenu({
+  choices: Object.fromEntries([...minigameOptions.querySelectorAll("[data-minigame]")]
+    .map(button => [button.dataset.minigame, button.textContent])),
+  onOpen() { input.clear(); },
+  onExit() {
+    game.returnToLan();
+    input.clear();
+    world.resetCamera(state);
+  },
+  onRound(round, playerId, first) {
+    const local = round.racers.find(racer => racer.id === playerId);
+    Object.assign(state, round.state, local, {
+      racers: round.racers,
+      playerWon: round.state.winnerIds.length === 0 ? null : round.state.winnerIds.includes(playerId),
+    });
+    Object.assign(rival, round.racers.find(racer => racer.id !== playerId));
+    if (first) {
+      input.clear();
+      world.resetCamera(state);
+    }
+  },
+});
 
 function openMenu() {
   menuStep = "main";
@@ -67,6 +90,10 @@ document.getElementById("back-to-menu").addEventListener("click", () => {
 document.getElementById("close-menu").addEventListener("click", closeMenu);
 
 const input = createInput(key => {
+  if (lanMenu.isOpen) {
+    if (key === "escape") lanMenu.escape();
+    return;
+  }
   if (menuStep !== null) {
     if (key === "escape") {
       if (menuStep === "choose") document.getElementById("back-to-menu").click();
@@ -75,11 +102,17 @@ const input = createInput(key => {
     return;
   }
   if (state.scene === "finished" && key === "enter") {
+    if (lanMenu.active) {
+      lanMenu.leave();
+      return;
+    }
     game.returnToButton();
     input.clear();
     world.resetCamera(state);
-  } else if (state.scene === "lobby" && key === "e" && game.nearButton()) {
-    openMenu();
+  } else if (state.scene === "lobby" && key === "e") {
+    sounds.unlock();
+    if (game.nearLanButton()) lanMenu.open();
+    else if (game.nearButton()) openMenu();
   }
 });
 world.resetCamera(state);
@@ -91,8 +124,17 @@ function doorsPassed(racer) {
 function updateUI() {
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
-      game.nearButton() ? "Press E to choose a minigame" : "Walk to the red button to play a minigame"
+      game.nearLanButton() ? "Press E to host or join a LAN game" :
+      game.nearButton() ? "Press E to choose a minigame" :
+        "Red button: minigames | Blue button inside the right side of LAN: host or join"
     }`
+    : state.multiplayer
+      ? `LAN ${state.minigame.toUpperCase()} | You: Player ${state.number} | ${
+        state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
+          state.minigame === "pillows" ? `${racer.lives} lives` :
+          state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
+          `${racer.laps}/${LAPS_TO_WIN} laps`}`).join(" | ")
+      } | W/S move | A/D turn${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
     : state.minigame === "doors"
       ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn`
     : state.minigame === "pillows"
@@ -106,18 +148,27 @@ function updateUI() {
   result.textContent = (state.caught === "player" ? "CAUGHT! " : state.caught === "rival" ? "RIVAL CAUGHT! " :
     state.caught === "both" ? "BOTH CAUGHT! " : "") +
     (state.playerWon === null ? "DRAW!" : state.playerWon ? "VICTORY!" : "RIVAL WINS!");
+  if (state.multiplayer) {
+    result.textContent = state.winnerIds.length === 0 ? "DRAW!" :
+      state.playerWon ? "VICTORY!" :
+        `PLAYER ${state.racers.find(racer => racer.id === state.winnerIds[0]).number} WINS!`;
+  }
+  message.querySelector("small").textContent = state.multiplayer ?
+    "Press Enter to leave the LAN game" : "Press Enter to return to the button";
   message.style.display = state.scene === "finished" ? "flex" : "none";
 }
 
 let lastCountdown = null;
+let previousScene = state.scene;
 let last = performance.now();
 function frame(now) {
   const elapsed = (now - last) / 1000;
   last = now;
-  const previousScene = state.scene;
-  const { moving, dt } = game.update(
-    Math.min(elapsed, 0.05), elapsed, menuStep === null ? input.keys : {}
-  );
+  const keys = menuStep === null && !lanMenu.isOpen ? input.keys : {};
+  lanMenu.setKeys(keys);
+  const { moving, dt } = lanMenu.active ?
+    { moving: !state.eliminated && state.controls.forward !== 0, dt: Math.min(elapsed, 0.05) } :
+    game.update(Math.min(elapsed, 0.05), elapsed, keys);
   if (state.scene === "countdown") {
     const number = Math.ceil(state.countdown);
     if (number > 0 && number !== lastCountdown) sounds.countdownBeep(number);
@@ -129,7 +180,8 @@ function frame(now) {
   sounds.updateRace(state.scene, elapsed);
   if (state.scene === "finished" && previousScene !== "finished") input.clear();
   updateUI();
-  world.render(state, rival, dt, moving, game.nearButton());
+  world.render(state, rival, dt, moving, game.nearButton(), game.nearLanButton());
+  previousScene = state.scene;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

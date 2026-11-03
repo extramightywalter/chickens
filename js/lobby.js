@@ -1,5 +1,5 @@
 import {
-  BUTTON, CELL, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
+  BUTTON, CELL, LAN_BUTTON, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
   checkpoints, lobbyWalls, trackWalls,
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
@@ -28,7 +28,7 @@ export function collide(px, pz, walls) {
   return [px, pz];
 }
 
-function moveRacer(racer, dt, forward, turn, speed, walls) {
+export function moveRacer(racer, dt, forward, turn, speed, walls) {
   racer.yaw += turn * TURN * dt;
   if (!forward) return;
   const distance = forward * speed * dt;
@@ -50,6 +50,7 @@ export function createGame({ random = Math.random } = {}) {
       countdown: 0, goTimer: 0, playerWon: null,
       minigame: null, pillows: [], survivalTime: 0, hit: null, lives: 0, cannonYaws: [],
       doors: [], monster: null, caught: null,
+      multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
     });
     Object.assign(rival, {
       x: START.x + 1.6, z: START.z, yaw: Math.PI,
@@ -65,6 +66,15 @@ export function createGame({ random = Math.random } = {}) {
 
   function nearButton() {
     return Math.hypot(state.x - BUTTON.x, state.z - BUTTON.z) < BUTTON.r + R + 1;
+  }
+
+  function nearLanButton() {
+    return state.scene === "lobby" &&
+      Math.hypot(state.x - LAN_BUTTON.x, state.z - LAN_BUTTON.z) < LAN_BUTTON.r + R + 0.5;
+  }
+
+  function returnToLan() {
+    setScene("lobby", LAN_BUTTON, Math.PI);
   }
 
   function enterTrack() {
@@ -254,7 +264,7 @@ export function createGame({ random = Math.random } = {}) {
 
   reset();
   return {
-    state, rival, nearButton, enterTrack, enterPillows, enterDoors, enterMinigame,
+    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterMinigame,
     reset, returnToButton, update,
   };
 }
