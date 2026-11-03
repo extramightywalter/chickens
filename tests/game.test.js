@@ -143,14 +143,15 @@ test("lobby map preserves the sketch with a compact footprint", () => {
   assert.equal(LOBBY_BOUNDS.maxZ - LOBBY_BOUNDS.minZ, 72);
   assert.equal(LOBBY_CELL_WIDTH, 3);
   assert.equal(LOBBY_CELL_DEPTH, 7.2);
-  assert.ok(LOBBY_MAP.every(line => /^[ rxyz]+$/.test(line)));
+  assert.ok(LOBBY_MAP.every(line => /^[ rxyzl]+$/.test(line)));
   assert.equal(LOBBY_MAP.join("").split("x").length - 1, 4);
   assert.equal(LOBBY_MAP.join("").split("y").length - 1, 1);
   assert.equal(LOBBY_MAP.join("").split("z").length - 1, 1);
-  assert.equal(lobbyStructures.length, 6);
+  assert.equal(LOBBY_MAP.join("").split("l").length - 1, 1);
+  assert.equal(lobbyStructures.length, 7);
   assert.deepEqual(
     lobbyStructures.map(({ type }) => type).sort(),
-    ["house", "house", "house", "house", "lobby", "shop"]
+    ["house", "house", "house", "house", "laness", "lobby", "shop"]
   );
 });
 
@@ -250,6 +251,65 @@ test("the lobby building is not collidable", () => {
   const lobby = lobbyStructures.find(({ type }) => type === "lobby");
   const wallPoint = { x: lobby.x, z: lobby.z - lobby.depth / 2 };
   assert.deepEqual(collide(wallPoint.x, wallPoint.z, lobbyWalls), [wallPoint.x, wallPoint.z]);
+});
+
+test("Laness sits to the player's right on a connected road branch", () => {
+  const laness = lobbyStructures.find(({ type }) => type === "laness");
+  assert.equal(laness.asset, "../assets/models/laness.glb");
+  assert.equal(laness.rotation, 0);
+  assert.ok(laness.z - laness.depth / 2 > LOBBY_SPAWN.z);
+  const visited = new Set(["0,3"]);
+  const queue = [[0, 3]];
+  for (const [column, row] of queue) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = column + dx, z = row + dz;
+      const key = `${x},${z}`;
+      if (visited.has(key) || LOBBY_MAP[z]?.[x] !== "r") continue;
+      visited.add(key);
+      queue.push([x, z]);
+    }
+  }
+  assert.ok(visited.has("0,6"), "A small road must run rightward from the spawn");
+  assert.ok(visited.has("9,6"), "The branch must reach the front of Laness");
+  const game = createGame();
+  Object.assign(game.state, { yaw: 0 });
+  const walkTo = (axis, target) => {
+    const steps = Math.ceil((target - game.state[axis]) / (SPEED * 0.05));
+    for (let step = 0; step < steps; step++) game.update(0.05, 0.05, { w: true });
+    assert.ok(Math.abs(game.state[axis] - target) < SPEED * 0.05 + 1e-8);
+  };
+  const roadZ = LOBBY_BOUNDS.minZ + 6.5 * LOBBY_CELL_DEPTH;
+  walkTo("z", roadZ);
+  game.state.yaw = Math.PI / 2;
+  walkTo("x", laness.x);
+  game.state.yaw = 0;
+  walkTo("z", laness.z);
+});
+
+test("Laness has full-width front and back access with solid side walls", () => {
+  const laness = lobbyStructures.find(({ type }) => type === "laness");
+  const entrances = lobbyEntrances.filter(({ type }) => type === "laness");
+  assert.deepEqual(entrances.map(({ entranceSide }) => entranceSide), ["north", "south"]);
+  for (const entrance of entrances) {
+    assert.equal(entrance.entranceWidth, laness.width);
+    for (const offset of [-0.5, -0.25, 0, 0.25, 0.5]) {
+      const game = createGame();
+      const outside = entrance.entranceSide === "north" ? -1 : 1;
+      const x = laness.x + offset * (laness.width - 2 * (R + 0.25));
+      Object.assign(game.state, {
+        x, z: entrance.z + outside * 1.5, yaw: outside === -1 ? 0 : Math.PI,
+      });
+      const steps = Math.ceil((laness.depth + 3) / (SPEED * 0.05));
+      for (let step = 0; step < steps; step++) game.update(0.05, 0.05, { w: true });
+      assert.ok((game.state.z - laness.z) * outside < -laness.depth / 2,
+        "Every part of each opening must allow walking all the way through");
+      assert.ok(Math.abs(game.state.x - x) < 1e-8);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const x = laness.x + side * laness.width / 2;
+    assert.notDeepEqual(collide(x, laness.z, lobbyWalls), [x, laness.z]);
+  }
 });
 
 test("the lobby model's north arch faces the road and leads to the indoor race button", () => {

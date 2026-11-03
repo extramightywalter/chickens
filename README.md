@@ -17,8 +17,8 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-the existing equal 50/50 Race or Pillow Dodge selection, or choose **Choose
-minigame** to start either game directly.
+an equal one-in-three Race, Pillow Dodge, or Door Dash selection, or choose
+**Choose minigame** to start any game directly.
 
 - **Race:** Complete three laps before the red rival.
 - **Pillow Dodge:** Survive longer than the rival in a small enclosed arena.
@@ -31,17 +31,27 @@ minigame** to start either game directly.
   with reaction delays. It eventually tires after 22-28 seconds and stops
   dodging, so incoming pillows will eventually use up its remaining lives if
   you survive long enough.
+- **Door Dash:** Race the rival down a walled path through four evenly spaced
+  gates (`assets/models/double-doors.glb`). Each gate has two arched doors: one
+  secretly opens only for you and the other only for the rival, with a new
+  random combination every playthrough. A locked door rattles and stays shut.
+  The rival guesses too, switches after bumping a locked door, and works out
+  its door when it sees you pass through yours. A monster (`assets/models/monster.glb`)
+  walks behind you both at 85% of chicken speed and chases whoever is last.
+  If it touches one chicken, the other wins; otherwise the first chicken past
+  the yellow finish line wins. The camera stays locked directly behind you,
+  and the monster turns translucent when it is close behind you.
 
 The rival uses the same chicken model as the player, with green parts recolored red.
 It uses short steering taps and throttle changes within the player's movement
 limits. It chooses different lines each lap, tries to pass or dodge nearby
 players, defends against a player behind it, and occasionally makes small
 steering mistakes before correcting.
-Both minigames start with a three-second countdown. Press Enter after either
+All minigames start with a three-second countdown. Press Enter after any
 minigame to return to the lobby, standing on the red button.
 A red on-screen marker points toward the rival whenever it is out of view.
 The countdown has arcade beeps, the race starts with a comic blast, and each
-chicken squawks at its own random interval during either minigame. Audio starts when
+chicken squawks at its own random interval during any minigame. Audio starts when
 you press E, which also satisfies browser sound permissions.
 Four framed copies of `oreo portrait.png` hang on track walls, facing into the
 course. Their positions and orientations are defined in `js/track.js`.
@@ -51,6 +61,9 @@ times that size. All structures are scaled uniformly to preserve proportions.
 Houses and shop have collision bounds around their visible footprints, with
 entrances open; the lobby building itself is passable. The houses face away
 from the central path.
+Laness stands to the right of the starting player, beside a road connected to
+the spawn by a small side road. Its entire front and back are open for walking
+through; only its side walls block movement.
 
 ## Structure
 
@@ -62,6 +75,8 @@ from the central path.
   independent of the DOM and Three.js.
 - `js/pillows.js`: equal-chance minigame list, pillow arena, throws, hit detection,
   and rival dodge decisions; independent of the DOM and Three.js.
+- `js/doors.js`: Door Dash course, secret door assignments, rival door guessing,
+  monster chase, and win rules; independent of the DOM and Three.js.
 - `js/track.js`: shared track and lobby layouts, wall bounds, and gameplay constants.
 - `js/world.js`: Three.js scene, lobby building models, `assets/models/chicken.glb` racers,
   animation, and camera.

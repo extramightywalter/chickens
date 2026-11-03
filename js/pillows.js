@@ -1,6 +1,6 @@
 import { R, TURN } from "./track.js";
 
-export const MINIGAMES = ["track", "pillows"];
+export const MINIGAMES = ["track", "pillows", "doors"];
 export const ARENA = { minX: -9, maxX: 9, minZ: -9, maxZ: 9 };
 export const PILLOW_RADIUS = 0.6;
 export const PILLOW_LIVES = 3;

@@ -40,11 +40,11 @@ export const LOBBY_MAP = [
   "         rr",
   "         rr            x",
   "rrrrrrrrrrrrr          rr",
-  "  rrrrrrrrrrrrrrrr     rr",
-  "      rrrrrrrrrrrrrrrrrrrrrrrr y",
-  "    rr           rr      rr",
-  "   rrr           rr       rr",
-  "  x               x       rr",
+  "r rrrrrrrrrrrrrrrr     rr",
+  "r     rrrrrrrrrrrrrrrrrrrrrrrr y",
+  "rrrrrrrrrrrrr    rr      rr",
+  "   rrr   r       rr       rr",
+  "  x      l        x       rr",
   "                          z",
 ].map(row => row.padEnd(36));
 export const LOBBY_COLS = LOBBY_MAP[0].length;
@@ -65,6 +65,10 @@ const LOBBY_STRUCTURE_TYPES = {
     // The model's north arch is left of center and wider than the default doorway.
     scaleMultiplier: 3, offsetX: 4, entranceWidth: 3.42, entranceOffsetX: -0.71,
   },
+  l: {
+    type: "laness", asset: "../assets/models/laness.glb", width: 5.27735233, depth: 5.55238318,
+    entranceRotation: -Math.PI,
+  },
 };
 
 export function lobbyCellPosition(column, row) {
@@ -82,7 +86,7 @@ export const lobbyStructures = LOBBY_MAP.flatMap((line, row) =>
     const position = lobbyCellPosition(column, row);
     const scale = LOBBY_BUILDING_WIDTH / structure.width * (structure.scaleMultiplier ?? 1);
     const side = key === "x" ? (row < 3 ? "south" : "north") :
-      key === "y" ? "west" : "south";
+      key === "y" ? "west" : key === "l" ? "north" : "south";
     const modelWidth = structure.width * scale, modelDepth = structure.depth * scale;
     const rotated = side === "west" || side === "east";
     return [{
@@ -90,7 +94,8 @@ export const lobbyStructures = LOBBY_MAP.flatMap((line, row) =>
       id: `${structure.type}-${structureIndex++}`,
       entranceSide: structure.type === "house" ? side :
         structure.type === "shop" ? "north" : side,
-      entranceWidth: structure.entranceWidth ? scale * structure.entranceWidth :
+      entranceWidth: structure.type === "laness" ? modelWidth :
+        structure.entranceWidth ? scale * structure.entranceWidth :
         Math.max(2.8, scale * 0.55),
       entranceOffsetX: scale * (structure.entranceOffsetX ?? 0),
       rotation: { south: 0, west: -Math.PI / 2, north: Math.PI, east: Math.PI / 2 }[side] +
@@ -123,16 +128,25 @@ function wall(minX, maxX, minZ, maxZ) {
   return { minX, maxX, minZ, maxZ };
 }
 
-export const lobbyEntrances = lobbyStructures.map(structure => ({
-  ...structure, ...entrancePoint(structure),
-}));
+export const lobbyEntrances = lobbyStructures.flatMap(structure => {
+  const front = { ...structure, ...entrancePoint(structure) };
+  if (structure.type !== "laness") return [front];
+  const back = { ...structure, entranceSide: "south" };
+  return [front, { ...back, ...entrancePoint(back) }];
+});
 
 export const lobbyWalls = lobbyStructures
-  .filter(({ type }) => type === "house" || type === "shop")
+  .filter(({ type }) => type === "house" || type === "shop" || type === "laness")
   .flatMap(structure => {
     const { x, z, width, depth, entranceSide, entranceWidth } = structure;
     const minX = x - width / 2, maxX = x + width / 2;
     const minZ = z - depth / 2, maxZ = z + depth / 2;
+    if (structure.type === "laness") {
+      return [
+        wall(minX, minX + LOBBY_WALL_THICKNESS, minZ, maxZ),
+        wall(maxX - LOBBY_WALL_THICKNESS, maxX, minZ, maxZ),
+      ];
+    }
     const entranceX = x + (structure.entranceOffsetX ?? 0);
     const halfOpening = entranceWidth / 2;
     const walls = [];

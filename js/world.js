@@ -3,11 +3,17 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addPaintings } from "./paintings.js";
 import { ARENA, CANNONS, CANNON_MUZZLE, PILLOW_RADIUS, arenaWalls } from "./pillows.js";
 import {
+  DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_MODEL_SCALE, DOOR_XS, FINISH_Z, PATH_END_Z,
+  PATH_HALF_WIDTH, PATH_START_Z, gateZs, pathWalls,
+} from "./doors.js";
+import {
   BUTTON, CELL, CHICKEN_SCALE, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP, MAP,
   START, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows, trackWalls,
 } from "./track.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
+const MONSTER_SCALE = 1.4;
+const DOOR_SWING = 1.7;
 const RIVAL_COLORS = {
   "_defaultMat(Clone)": 0xd62828,
   "dark(Clone)": 0x641010,
@@ -82,7 +88,8 @@ export async function createWorld() {
   const track = new THREE.Group();
   const lobby = new THREE.Group();
   const arena = new THREE.Group();
-  scene.add(track, lobby, arena);
+  const doorCourse = new THREE.Group();
+  scene.add(track, lobby, arena, doorCourse);
   const arenaFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.maxX - ARENA.minX, ARENA.maxZ - ARENA.minZ),
     new THREE.MeshLambertMaterial({ color: 0x527bac })
@@ -204,6 +211,96 @@ export async function createWorld() {
     object.material = bluePillowMaterial;
   });
   const pillowMeshes = new Map();
+
+  const doorPath = new THREE.Mesh(
+    new THREE.PlaneGeometry(PATH_HALF_WIDTH * 2, PATH_END_Z - PATH_START_Z),
+    new THREE.MeshLambertMaterial({ color: 0x9a8f80 })
+  );
+  doorPath.rotation.x = -Math.PI / 2;
+  doorPath.position.set(0, 0.02, (PATH_START_Z + PATH_END_Z) / 2);
+  doorPath.receiveShadow = true;
+  doorCourse.add(doorPath);
+  for (const wall of pathWalls) addWall(doorCourse, wall);
+  const finishLine = new THREE.Mesh(
+    new THREE.PlaneGeometry(PATH_HALF_WIDTH * 2, 1.2),
+    new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a })
+  );
+  finishLine.rotation.x = -Math.PI / 2;
+  finishLine.position.set(0, 0.04, FINISH_Z);
+  doorCourse.add(finishLine);
+
+  const { scene: gateModel } = await loader.loadAsync(
+    new URL("../assets/models/double-doors.glb", import.meta.url).href
+  );
+  let leafMaterial;
+  gateModel.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = object.receiveShadow = true;
+    if (!object.material.name.startsWith("metalPurple")) return;
+    leafMaterial = object.material;
+    // Collapse the model's fixed door panels (purple quads below the arch ceilings).
+    const position = object.geometry.attributes.position;
+    const index = object.geometry.index.array;
+    for (let t = 0; t < index.length; t += 3) {
+      const top = Math.max(position.getY(index[t]), position.getY(index[t + 1]), position.getY(index[t + 2]));
+      if (top < 2.1) index[t + 1] = index[t + 2] = index[t];
+    }
+    object.geometry.index.needsUpdate = true;
+  });
+  gateModel.scale.setScalar(DOOR_MODEL_SCALE);
+  const gateBounds = new THREE.Box3().setFromObject(gateModel);
+  const gateCenter = gateBounds.getCenter(new THREE.Vector3());
+  gateModel.position.set(-gateCenter.x, -gateBounds.min.y, -gateCenter.z);
+  const leafWidth = DOOR_HALF_WIDTH * 2, leafBottom = 0.199 * DOOR_MODEL_SCALE;
+  const leafStraight = 1.3 * DOOR_MODEL_SCALE;
+  const leafShape = new THREE.Shape();
+  leafShape.moveTo(0, 0);
+  leafShape.lineTo(leafWidth, 0);
+  leafShape.lineTo(leafWidth, leafStraight);
+  leafShape.absarc(leafWidth / 2, leafStraight, leafWidth / 2, 0, Math.PI, false);
+  leafShape.lineTo(0, 0);
+  const leafGeometry = new THREE.ExtrudeGeometry(leafShape, { depth: 0.2, bevelEnabled: false });
+  leafGeometry.translate(0, 0, -0.1);
+  const knobMaterial = new THREE.MeshLambertMaterial({ color: 0xf9ed69 });
+  const gates = gateZs.map(z => {
+    const gate = new THREE.Group();
+    gate.add(gateModel.clone(true));
+    gate.position.set(0, 0, z);
+    doorCourse.add(gate);
+    const leaves = DOOR_XS.map((x, side) => {
+      const hinge = new THREE.Group();
+      hinge.position.set(x + (side === 0 ? -DOOR_HALF_WIDTH : DOOR_HALF_WIDTH), leafBottom, DOOR_LEAF_OFFSET);
+      const leaf = new THREE.Mesh(leafGeometry, leafMaterial);
+      leaf.castShadow = true;
+      if (side === 1) leaf.position.x = -leafWidth;
+      hinge.add(leaf);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), knobMaterial);
+      knob.position.set(side === 0 ? leafWidth - 0.4 : -leafWidth + 0.4, leafStraight * 0.6, -0.15);
+      hinge.add(knob);
+      gate.add(hinge);
+      return hinge;
+    });
+    return leaves;
+  });
+
+  const { scene: monsterModel } = await loader.loadAsync(
+    new URL("../assets/models/monster.glb", import.meta.url).href
+  );
+  monsterModel.scale.setScalar(MONSTER_SCALE);
+  const monsterBounds = new THREE.Box3().setFromObject(monsterModel);
+  const monsterCenter = monsterBounds.getCenter(new THREE.Vector3());
+  monsterModel.position.set(-monsterCenter.x, -monsterBounds.min.y, -monsterCenter.z);
+  const monsterMaterials = [];
+  monsterModel.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.material = object.material.clone();
+    object.material.transparent = true;
+    monsterMaterials.push(object.material);
+  });
+  const monster = new THREE.Group();
+  monster.add(monsterModel);
+  doorCourse.add(monster);
   let lobbyStructure;
   await Promise.all(lobbyStructures.map(async structure => {
     const { scene: model } = await loader.loadAsync(
@@ -276,9 +373,29 @@ export async function createWorld() {
 
   function render(state, rival, dt, moving, nearButton) {
     const pillowGame = state.minigame === "pillows";
-    track.visible = state.scene !== "lobby" && !pillowGame;
+    const doorGame = state.minigame === "doors";
+    track.visible = state.scene !== "lobby" && !pillowGame && !doorGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
+    doorCourse.visible = doorGame;
+    if (doorGame) {
+      state.doors.forEach((door, index) => gates[index].forEach((hinge, side) => {
+        const shake = door.rattle[side] > 0 ? Math.sin(door.rattle[side] * 60) * 0.04 : 0;
+        hinge.rotation.y = (side === 0 ? -1 : 1) * (door.open[side] * DOOR_SWING + shake);
+      }));
+      const step = state.scene === "doors" && dt > 0;
+      monster.position.set(
+        state.monster.x, step ? Math.abs(Math.sin(state.monster.walk)) * 0.25 : 0, state.monster.z
+      );
+      monster.rotation.y = state.monster.yaw + Math.PI;
+      monster.rotation.z = step ? Math.sin(state.monster.walk) * 0.08 : 0;
+      // Fade the monster while it is between the chase camera and the player.
+      const close = Math.hypot(state.monster.x - state.x, state.monster.z - state.z) < 7.5;
+      for (const material of monsterMaterials) {
+        material.opacity = close ? 0.35 : 1;
+        material.depthWrite = !close;
+      }
+    }
     if (pillowGame) cannons.forEach((cannon, index) => {
       cannon.rotation.y = state.cannonYaws[index];
     });
@@ -305,7 +422,7 @@ export async function createWorld() {
     chicken.position.set(state.x, Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
     chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
-    const rivalMoving = (state.scene === "track" || state.scene === "pillows") &&
+    const rivalMoving = ["track", "pillows", "doors"].includes(state.scene) &&
       dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
@@ -318,7 +435,9 @@ export async function createWorld() {
       const height = Math.max(26, 22 / camera.aspect);
       target.set(0, height, height * 0.55);
     }
-    camPos.lerp(target, 1 - Math.pow(0.0001, dt));
+    // The door course keeps the camera locked directly behind the player.
+    if (doorGame) camPos.copy(target);
+    else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
     if (pillowGame) camera.lookAt(0, 0, 0);
     else camera.lookAt(state.x, 1.6, state.z);
