@@ -8,7 +8,7 @@ import {
   LOBBY_COLS, LOBBY_MAP, LOBBY_ROWS, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED,
   SPEED, START, TURN, checkpoints, cols, lobbyEntrances, lobbyStructures,
   TRACK_SURFACE_Y, TRACK_CHECKPOINT_RADIUS, isTrackSupported, lobbyWalls, rows, trackWalls,
-  touchesArchLanding,
+  touchesFinishLanding,
 } from "../js/track.js";
 
 function createGame(seed = 1) {
@@ -393,13 +393,13 @@ test("the course starts under the arch and finishes on the opposite side", () =>
   assert.equal(game.state.playerWon, true);
 });
 
-test("touching the red landing under the arch lets either racer win", () => {
+test("touching the red landing at the far-side finish lets either racer win", () => {
   for (const winner of ["player", "rival"]) {
     const game = createGame();
     startRace(game);
-    assert.equal(touchesArchLanding(game.state), false);
-    assert.equal(touchesArchLanding(game.rival), false);
-    Object.assign(winner === "player" ? game.state : game.rival, START);
+    assert.equal(touchesFinishLanding(game.state), false);
+    assert.equal(touchesFinishLanding(game.rival), false);
+    Object.assign(winner === "player" ? game.state : game.rival, checkpoints.at(-1));
     game.update(0);
     assert.equal(game.state.scene, "finished");
     assert.equal(game.state.playerWon, winner === "player");
@@ -409,8 +409,8 @@ test("touching the red landing under the arch lets either racer win", () => {
 test("simultaneous contact with the red landing is a draw", () => {
   const game = createGame();
   startRace(game);
-  Object.assign(game.state, START);
-  Object.assign(game.rival, START);
+  Object.assign(game.state, checkpoints.at(-1));
+  Object.assign(game.rival, checkpoints.at(-1));
   game.update(0);
   assert.equal(game.state.scene, "finished");
   assert.equal(game.state.playerWon, null);

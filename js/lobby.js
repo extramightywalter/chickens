@@ -1,6 +1,6 @@
 import {
   BUTTON, LAN_BUTTON, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
-  TRACK_CHECKPOINT_RADIUS, checkpoints, isTrackSupported, lobbyWalls, touchesArchLanding,
+  TRACK_CHECKPOINT_RADIUS, checkpoints, isTrackSupported, lobbyWalls, touchesFinishLanding,
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 import { DOORS_START, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
@@ -210,8 +210,8 @@ export function createGame({ random = Math.random } = {}) {
         doorRound.update(state, rival, dt);
       }
       if (state.scene === "track") {
-        const playerTouched = touchesArchLanding(state);
-        const rivalTouched = touchesArchLanding(rival);
+        const playerTouched = touchesFinishLanding(state);
+        const rivalTouched = touchesFinishLanding(rival);
         if (playerTouched || rivalTouched) {
           finishRace(playerTouched === rivalTouched ? null : playerTouched);
         }

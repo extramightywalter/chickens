@@ -21,7 +21,7 @@ an equal one-in-three Race, Pillow Dodge, or Door Dash selection, or choose
 **Choose minigame** to start any game directly.
 
 - **Race:** Start beneath the course arch. The first racer to touch the red
-  landing under the arch or reach the far-side finish wins.
+  landing at the far-side finish wins.
 - **Pillow Dodge:** Survive longer than the rival in a small enclosed arena.
   Cannons outside the arena aim and fire blue pillows alternately at each
   chicken's position. Both chickens start with three lives, shown in the HUD.
@@ -45,7 +45,7 @@ an equal one-in-three Race, Pillow Dodge, or Door Dash selection, or choose
 
 The red rival uses the same chicken model and movement limits as the player.
 In Race, it follows the supported course tiles from the arch to the far-side
-finish and can also win by touching the red landing under the arch.
+finish and can also win by touching the red landing there.
 All minigames start with a three-second countdown. Press Enter after any
 minigame to return to the lobby, standing on the red button.
 A red on-screen marker points toward the rival whenever it is out of view.
@@ -90,8 +90,8 @@ live list to join. The shared three-second countdown starts automatically
 when the final slot fills; there are no AI players or extra Start buttons.
 
 All chickens, controls, hazards, and results are synchronized by the server.
-Race starts beneath the arch and is won by touching the red landing under it or
-reaching the far-side finish.
+Race starts beneath the arch and is won by reaching the far-side finish or
+touching the red landing there.
 Pillow Dodge eliminates chickens at zero lives
 and continues until one remains. Door Dash assigns alternating players to
 opposite secret doors at each gate; caught chickens are eliminated, and the

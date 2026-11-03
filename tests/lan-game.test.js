@@ -88,11 +88,11 @@ test("any of eight human racers can win the race with a real finish-line crossin
   }
 });
 
-test("any of eight LAN racers can win by touching the red landing under the arch", () => {
+test("any of eight LAN racers can win by touching the red landing at the far-side finish", () => {
   for (let winner = 0; winner < 8; winner++) {
     const game = round("track");
     game.update(3);
-    Object.assign(game.racers[winner], START);
+    Object.assign(game.racers[winner], checkpoints.at(-1));
     game.update(0.05);
     assert.equal(game.state.scene, "finished");
     assert.deepEqual(game.state.winnerIds, [game.racers[winner].id]);

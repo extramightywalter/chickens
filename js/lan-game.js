@@ -1,7 +1,7 @@
 import { createGame, moveRacer, moveTrackRacer } from "./lobby.js";
 import {
   LAPS_TO_WIN, SPEED, START, TRACK_CHECKPOINT_RADIUS, checkpoints,
-  touchesArchLanding,
+  touchesFinishLanding,
 } from "./track.js";
 import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
@@ -89,7 +89,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     }
     const winners = racers.filter(racer => !racer.eliminated &&
       (minigame === "track"
-        ? racer.laps >= LAPS_TO_WIN || touchesArchLanding(racer)
+        ? racer.laps >= LAPS_TO_WIN || touchesFinishLanding(racer)
         : minigame === "doors" && racer.z >= FINISH_Z));
     const survivors = racers.filter(racer => !racer.eliminated);
     if (winners.length) finish(winners);

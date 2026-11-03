@@ -6,7 +6,7 @@ import {
   PATH_HALF_WIDTH, PATH_START_Z, gateZs, pathWalls,
 } from "./doors.js";
 import {
-  ARCH_LANDING, BUTTON, CELL, CHICKEN_SCALE, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP,
+  BUTTON, CELL, CHICKEN_SCALE, FINISH_LANDING, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP,
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
 
@@ -346,10 +346,10 @@ export async function createWorld() {
 
   const arrowMat = new THREE.MeshLambertMaterial({ color: 0xf9ed69, emissive: 0x8a7a1a });
   const landing = new THREE.Mesh(
-    new THREE.BoxGeometry(ARCH_LANDING.halfWidth * 2, 0.06, ARCH_LANDING.halfDepth * 2),
+    new THREE.BoxGeometry(FINISH_LANDING.halfWidth * 2, 0.06, FINISH_LANDING.halfDepth * 2),
     new THREE.MeshLambertMaterial({ color: 0xd62828, emissive: 0x581010 })
   );
-  landing.position.set(ARCH_LANDING.x, TRACK_SURFACE_Y + 0.03, ARCH_LANDING.z);
+  landing.position.set(FINISH_LANDING.x, TRACK_SURFACE_Y + 0.03, FINISH_LANDING.z);
   landing.receiveShadow = true;
   track.add(landing);
 

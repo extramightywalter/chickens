@@ -82,15 +82,15 @@ function findTrackRoute() {
 export const ROUTE = findTrackRoute();
 export const checkpoints = ROUTE;
 export const START = checkpoints[0];
-export const ARCH_LANDING = {
-  x: START.x, z: START.z, halfWidth: 0.8, halfDepth: 1.1,
+export const FINISH_LANDING = {
+  x: checkpoints.at(-1).x, z: checkpoints.at(-1).z, halfWidth: 0.8, halfDepth: 1.1,
 };
 
-export function touchesArchLanding(racer) {
-  const closestX = Math.max(ARCH_LANDING.x - ARCH_LANDING.halfWidth,
-    Math.min(racer.x, ARCH_LANDING.x + ARCH_LANDING.halfWidth));
-  const closestZ = Math.max(ARCH_LANDING.z - ARCH_LANDING.halfDepth,
-    Math.min(racer.z, ARCH_LANDING.z + ARCH_LANDING.halfDepth));
+export function touchesFinishLanding(racer) {
+  const closestX = Math.max(FINISH_LANDING.x - FINISH_LANDING.halfWidth,
+    Math.min(racer.x, FINISH_LANDING.x + FINISH_LANDING.halfWidth));
+  const closestZ = Math.max(FINISH_LANDING.z - FINISH_LANDING.halfDepth,
+    Math.min(racer.z, FINISH_LANDING.z + FINISH_LANDING.halfDepth));
   return Math.hypot(racer.x - closestX, racer.z - closestZ) <= R;
 }
 
