@@ -71,6 +71,23 @@ test("only each human's own controls move their chicken at the normal speed", ()
   }
 });
 
+test("one forward tick from any LAN track spawn cannot win the race", () => {
+  for (let count = 2; count <= 8; count++) {
+    for (let index = 0; index < count; index++) {
+      const game = round("track", count);
+      game.update(3);
+      const racer = game.racers[index];
+      const before = { x: racer.x, z: racer.z };
+      game.update(0.1, new Map([[racer.id, { w: true }]]));
+      assert.equal(game.state.scene, "track");
+      assert.deepEqual(game.state.winnerIds, []);
+      assert.equal(racer.laps, 0);
+      assert.equal(racer.eliminated, false);
+      assert.ok(Math.hypot(racer.x - before.x, racer.z - before.z) <= SPEED * 0.1);
+    }
+  }
+});
+
 test("any of eight human racers can win the race with a real finish-line crossing", () => {
   for (let winner = 0; winner < 8; winner++) {
     const game = round("track");
@@ -88,7 +105,7 @@ test("any of eight human racers can win the race with a real finish-line crossin
   }
 });
 
-test("any of eight LAN racers can win by touching the red landing at the far-side finish", () => {
+test("the red landing finish works in LAN races like the red-button race", () => {
   for (let winner = 0; winner < 8; winner++) {
     const game = round("track");
     game.update(3);
@@ -102,7 +119,7 @@ test("any of eight LAN racers can win by touching the red landing at the far-sid
 test("track checkpoint order cannot be skipped by returning straight to the finish", () => {
   const game = round("track");
   game.update(3);
-  Object.assign(game.racers[0], { ...checkpoints.at(-1), nextCheckpoint: 1 });
+  Object.assign(game.racers[0], { ...checkpoints[3], nextCheckpoint: 1 });
   game.update(0.05);
   assert.equal(game.racers[0].laps, 0);
   assert.equal(game.racers[0].nextCheckpoint, 1);

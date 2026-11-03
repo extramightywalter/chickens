@@ -1,7 +1,6 @@
-import { createGame, moveRacer, moveTrackRacer } from "./lobby.js";
+import { createGame, moveRacer, moveTrackRacer, updateTrackProgress } from "./lobby.js";
 import {
-  LAPS_TO_WIN, SPEED, START, TRACK_CHECKPOINT_RADIUS, checkpoints,
-  touchesFinishLanding,
+  LAPS_TO_WIN, SPEED, START, checkpoints, touchesFinishLanding,
 } from "./track.js";
 import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
@@ -74,13 +73,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       }
       if (minigame !== "track") moveRacer(racer, dt, forward, turn, SPEED, walls);
       racer.walk = forward ? racer.walk + dt * 11 : 0;
-      if (minigame === "track") {
-        const point = checkpoints[racer.nextCheckpoint];
-        if (Math.hypot(racer.x - point.x, racer.z - point.z) <= TRACK_CHECKPOINT_RADIUS) {
-          if (racer.nextCheckpoint === checkpoints.length - 1) racer.laps = LAPS_TO_WIN;
-          else racer.nextCheckpoint++;
-        }
-      }
+      if (minigame === "track") updateTrackProgress(racer);
     }
     if (minigame === "pillows") {
       pillowRound.update(state, racers[1], dt, previous[0], previous[1], racers, previous);

@@ -50,6 +50,17 @@ export function moveTrackRacer(racer, dt, forward, turn, speed) {
   return true;
 }
 
+export function updateTrackProgress(racer, radius = TRACK_CHECKPOINT_RADIUS) {
+  const point = checkpoints[racer.nextCheckpoint];
+  if (Math.hypot(racer.x - point.x, racer.z - point.z) > radius) return false;
+  if (racer.nextCheckpoint === checkpoints.length - 1) {
+    racer.laps++;
+    return true;
+  }
+  racer.nextCheckpoint++;
+  return false;
+}
+
 export function createGame({ random = Math.random } = {}) {
   const state = {};
   const rival = {};
@@ -128,17 +139,6 @@ export function createGame({ random = Math.random } = {}) {
     state.playerWon = playerWon;
   }
 
-  function updateLaps(racer, radius = TRACK_CHECKPOINT_RADIUS) {
-    const point = checkpoints[racer.nextCheckpoint];
-    if (Math.hypot(racer.x - point.x, racer.z - point.z) > radius) return;
-    if (racer.nextCheckpoint === checkpoints.length - 1) {
-      racer.laps++;
-      if (racer.laps >= LAPS_TO_WIN) finishRace(racer === state);
-      return;
-    }
-    racer.nextCheckpoint++;
-  }
-
   function chooseRivalControls() {
     rival.target = rival.nextCheckpoint;
     const target = checkpoints[rival.nextCheckpoint];
@@ -158,7 +158,8 @@ export function createGame({ random = Math.random } = {}) {
       finishRace(true);
       return;
     }
-    updateLaps(rival, TRACK_CHECKPOINT_RADIUS + 1.5);
+    if (updateTrackProgress(rival, TRACK_CHECKPOINT_RADIUS + 1.5) &&
+      rival.laps >= LAPS_TO_WIN) finishRace(false);
     if (rival.controls.forward) rival.walk += dt * 11;
   }
 
@@ -192,7 +193,9 @@ export function createGame({ random = Math.random } = {}) {
         if (!moveTrackRacer(state, dt, fwd, turn, SPEED)) {
           state.eliminated = true;
           finishRace(false);
-        } else updateLaps(state);
+        } else if (updateTrackProgress(state) && state.laps >= LAPS_TO_WIN) {
+          finishRace(true);
+        }
         if (state.scene === "track") moveRival(dt);
       } else {
         moveRacer(state, dt, fwd, turn, SPEED, walls);
