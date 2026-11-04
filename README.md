@@ -17,13 +17,23 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-an equal one-in-three Race, Pillow Dodge, or Door Dash selection, or choose
+an equal one-in-four Race, Pillow Dodge, Door Dash, or Egg Heist selection, or choose
 **Choose minigame** to start any game directly.
-During a game, press **E** to spin for two seconds (movement is half speed) or
-press **Space** to dive forward. Each ability has its own three-second cooldown.
+During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
+(movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
+Press **Space** to dive forward in any game. Spin and dive each have their own
+three-second cooldown.
 
 - **Race:** Start beneath the course arch. The first racer to touch the red
   landing at the far-side finish wins.
+- **Egg Heist:** Collect eggs from the middle of `assets/models/egg-game-map.glb`
+  and drop them in your outer pit, outlined green and labeled **YOU**.
+  Press **E** near an egg to pick it up; press E again to drop it at your feet.
+  You can carry only one egg at a time, and holding E does not repeat the action.
+  Players can steal dropped eggs from anyone's pit. Only eggs on the ground inside
+  your pit count, not eggs you are carrying. After **30 seconds**, the highest
+  score wins; equal scores tie. Pit assignments maximize the minimum distance
+  between players. Solo play includes an egg-collecting, stealing rival.
 - **Pillow Dodge:** Survive longer than the rival in a small enclosed arena.
   Cannons outside the arena aim and fire blue pillows alternately at each
   chicken's position. Both chickens start with three lives, shown in the HUD.
@@ -83,9 +93,11 @@ open `http://<host-computer-LAN-IP>:8000`. Allow TCP port 8000 through the host'
 firewall if needed. Set `PORT` to use another port. All players must use the
 same server; GitHub Pages and the Python static server support solo games only.
 Three.js still loads from the CDN, so each device needs internet access.
+After updating game code, restart `npm start` and refresh each player's page.
+The running LAN server keeps its game rules in memory until restarted.
 
 Walk into Laness and go to the **blue button on its right side**, then press
-**E**. Choose **Host a game**, select **Random** or any of the same three
+**E**. Choose **Host a game**, select **Random** or any of the same four
 minigames offered at the red button, and choose **2-8 slots**. The host fills
 the first slot. Other players choose **Play a game** and click a game in the
 live list to join. The shared three-second countdown starts automatically
@@ -99,6 +111,8 @@ and continues until one remains. Door Dash assigns alternating players to
 opposite secret doors at each gate; caught chickens are eliminated, and the
 first finisher (or last survivor) wins. Simultaneous winners share a victory;
 simultaneous final eliminations are a draw.
+Egg Heist supports all 2-8 players, with server-authoritative egg pickup,
+stealing, pit scores, and a 30-second timer. Tied high scorers share the win.
 
 Leave a waiting room to free your slot; if the host leaves, the room closes.
 If anyone disconnects during a round, it ends for everyone with a notice.
@@ -120,6 +134,8 @@ red-button minigame selection remains unchanged.
   and rival dodge decisions; independent of the DOM and Three.js.
 - `js/doors.js`: Door Dash course, secret door assignments, rival door guessing,
   monster chase, and win rules; independent of the DOM and Three.js.
+- `js/eggs.js`: Egg Heist pit spacing, pickup/drop, stealing, scoring, timer,
+  and rival controls; independent of the DOM and Three.js.
 - `js/track.js`: shared track and lobby layouts, wall bounds, and gameplay constants.
 - `js/world.js`: Three.js scene, lobby building models, `assets/models/chicken.glb` racers,
   animation, and camera.

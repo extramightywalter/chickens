@@ -4,6 +4,7 @@ import {
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 import { DOORS_START, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
+import { createEggRound, eggWalls } from "./eggs.js";
 
 export const SPIN_DURATION = 2;
 export const DIVE_DURATION = 0.8;
@@ -93,6 +94,7 @@ export function createGame({ random = Math.random } = {}) {
   const rival = {};
   const pillowRound = createPillowRound(random);
   const doorRound = createDoorRound(random);
+  const eggRound = createEggRound();
   let previousActionKeys = { e: false, space: false };
   let driver;
 
@@ -104,6 +106,7 @@ export function createGame({ random = Math.random } = {}) {
       countdown: 0, goTimer: 0, playerWon: null,
       minigame: null, pillows: [], survivalTime: 0, hit: null, lives: 0, cannonYaws: [],
       doors: [], monster: null, caught: null,
+      eggs: [], eggPits: [], eggTimeLeft: 0, carryingEggId: null, eggScore: 0,
       multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
     });
     Object.assign(rival, {
@@ -111,6 +114,7 @@ export function createGame({ random = Math.random } = {}) {
       laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
       spinTimer: 0, diveTimer: 0, spinCooldown: 0, diveCooldown: 0,
       controls: { forward: 1, turn: 0 }, intent: "race", lives: 0, eliminated: false,
+      id: null, carryingEggId: null, eggScore: 0,
     });
     driver = { reaction: 0 };
     previousActionKeys = { e: false, space: false };
@@ -153,8 +157,18 @@ export function createGame({ random = Math.random } = {}) {
     const selected = MINIGAMES[Math.floor(random() * MINIGAMES.length)];
     if (selected === "track") enterTrack();
     else if (selected === "pillows") enterPillows();
-    else enterDoors();
+    else if (selected === "doors") enterDoors();
+    else enterEggs();
     return selected;
+  }
+
+  function enterEggs() {
+    setScene("countdown", { x: 0, z: 0 }, 0);
+    state.minigame = "eggs";
+    state.id = "player";
+    rival.id = "rival";
+    eggRound.reset(state, [state, rival]);
+    state.countdown = 3;
   }
 
   function reset() {
@@ -195,9 +209,14 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   function update(dt, elapsed = dt, keys = {}) {
+    if (state.minigame === "eggs" && state.scene === "finished") return { moving: false, dt: 0 };
     let moving = false;
-    updateAbilities(state, dt, keys, previousActionKeys,
+    const eggPressed = state.scene === "eggs" && keys.e === true && !previousActionKeys.e;
+    if (state.scene === "eggs") dt = Math.min(dt, state.eggTimeLeft);
+    updateAbilities(state, dt, state.minigame === "eggs" ? { ...keys, e: false } : keys, previousActionKeys,
+      state.scene === "eggs" ||
       ["lobby", "track", "pillows", "doors"].includes(state.scene));
+    if (state.minigame === "eggs") previousActionKeys.e = keys.e === true;
     if (state.scene === "countdown") {
       state.countdown = Math.max(0, state.countdown - elapsed);
       if (state.countdown === 0) {
@@ -209,7 +228,7 @@ export function createGame({ random = Math.random } = {}) {
     } else if (state.goTimer > 0) {
       state.goTimer = Math.max(0, state.goTimer - elapsed);
     }
-    if (["lobby", "track", "pillows", "doors"].includes(state.scene)) {
+    if (["lobby", "track", "pillows", "doors", "eggs"].includes(state.scene)) {
       const turn = Number(Boolean(keys["a"] || keys["arrowleft"])) -
         Number(Boolean(keys["d"] || keys["arrowright"]));
       let fwd = 0;
@@ -222,6 +241,7 @@ export function createGame({ random = Math.random } = {}) {
       const walls = state.scene === "lobby" ? lobbyWalls :
         state.scene === "pillows" ? arenaWalls :
         state.scene === "doors" ? [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, "player")] :
+        state.scene === "eggs" ? eggWalls :
         [];
       const previousPlayer = { x: state.x, z: state.z };
       const previousRival = { x: rival.x, z: rival.z };
@@ -247,6 +267,13 @@ export function createGame({ random = Math.random } = {}) {
         moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, rivalWalls);
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
         doorRound.update(state, rival, dt);
+      } else if (state.scene === "eggs" && dt > 0) {
+        if (eggPressed) eggRound.interact(state, state);
+        eggRound.chooseControls(state, rival);
+        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, eggWalls);
+        rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
+        const winners = eggRound.update(state, [state, rival], elapsed);
+        if (winners) finishRace(winners.length === 2 ? null : winners[0] === state);
       }
       if (state.scene === "track") {
         const playerTouched = touchesFinishLanding(state);
@@ -262,7 +289,7 @@ export function createGame({ random = Math.random } = {}) {
 
   reset();
   return {
-    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterMinigame,
+    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterEggs, enterMinigame,
     reset, returnToButton, update,
   };
 }

@@ -130,6 +130,12 @@ test("active players share authoritative human movement and disconnects end the 
   const moved = await host.next("round", data => data.racers[1].x > first.racers[1].x);
   assert.equal(moved.racers[0].x, first.racers[0].x);
   assert.ok(moved.racers[1].x > first.racers[1].x);
+  assert.ok(moved.racers[1].spinTimer > 0);
+  assert.ok(moved.racers[1].diveTimer > 0);
+  assert.ok(moved.racers[1].spinCooldown > 0);
+  assert.ok(moved.racers[1].diveCooldown > 0);
+  assert.equal(moved.racers[0].spinTimer, 0);
+  assert.equal(moved.racers[0].diveTimer, 0);
   guest.disconnect();
   const notice = await host.next("notice");
   assert.match(notice.message, /ended/);

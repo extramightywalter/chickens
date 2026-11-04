@@ -10,6 +10,7 @@ import {
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
 import { DIVE_DURATION, SPIN_DURATION } from "./lobby.js";
+import { EGG_COUNT, EGG_MAP_SCALE, EGG_PIT_HALF_SIZE } from "./eggs.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
 const MONSTER_SCALE = 1.4;
@@ -93,7 +94,8 @@ export async function createWorld() {
   const lobby = new THREE.Group();
   const arena = new THREE.Group();
   const doorCourse = new THREE.Group();
-  scene.add(track, lobby, arena, doorCourse);
+  const eggArena = new THREE.Group();
+  scene.add(track, lobby, arena, doorCourse, eggArena);
   const arenaFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.maxX - ARENA.minX, ARENA.maxZ - ARENA.minZ),
     new THREE.MeshLambertMaterial({ color: 0x527bac })
@@ -124,6 +126,69 @@ export async function createWorld() {
     group.add(mesh);
   }
   const loader = new GLTFLoader();
+  const [{ scene: eggMap }, { scene: eggModel }] = await Promise.all([
+    loader.loadAsync(new URL("../assets/models/egg-game-map.glb", import.meta.url).href),
+    loader.loadAsync(new URL("../assets/models/egg.glb", import.meta.url).href),
+  ]);
+  eggMap.scale.setScalar(EGG_MAP_SCALE);
+  eggMap.traverse(object => {
+    if (!object.isMesh) return;
+    object.receiveShadow = true;
+  });
+  // The supplied stepped map has small gaps between some floor pieces.
+  const eggBase = new THREE.Mesh(
+    new THREE.PlaneGeometry(45, 45),
+    new THREE.MeshLambertMaterial({ color: 0x777785 })
+  );
+  eggBase.rotation.x = -Math.PI / 2;
+  eggBase.position.y = -0.02;
+  eggBase.receiveShadow = true;
+  eggArena.add(eggMap, eggBase);
+  eggArena.updateMatrixWorld(true);
+  const eggRay = new THREE.Raycaster();
+  const eggHeights = new Map();
+  function eggFloorY(x, z) {
+    const key = `${Math.round(x * 10)},${Math.round(z * 10)}`;
+    if (!eggHeights.has(key)) {
+      eggRay.set(new THREE.Vector3(x, 20, z), new THREE.Vector3(0, -1, 0));
+      const hit = eggRay.intersectObjects([eggMap, eggBase], true)[0];
+      if (!hit) throw new Error(`Egg arena has no floor at ${x}, ${z}`);
+      eggHeights.set(key, hit.point.y);
+    }
+    return eggHeights.get(key);
+  }
+  const eggBounds = new THREE.Box3().setFromObject(eggModel);
+  const eggCenter = eggBounds.getCenter(new THREE.Vector3());
+  const eggScale = 0.75 / eggBounds.getSize(new THREE.Vector3()).y;
+  eggModel.scale.setScalar(eggScale);
+  eggModel.position.set(-eggCenter.x * eggScale, -eggBounds.min.y * eggScale,
+    -eggCenter.z * eggScale);
+  const eggMeshes = Array.from({ length: EGG_COUNT }, () => {
+    const group = new THREE.Group();
+    group.add(eggModel.clone(true));
+    eggArena.add(group);
+    return group;
+  });
+  const pitMarkers = Array.from({ length: 8 }, () => {
+    const group = new THREE.Group();
+    const size = EGG_PIT_HALF_SIZE * 2;
+    const border = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(size, 0.05, size)),
+      new THREE.LineBasicMaterial({ color: 0xffffff })
+    );
+    border.position.y = EGG_MAP_SCALE + 0.1;
+    group.add(border);
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const texture = new THREE.CanvasTexture(canvas);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+    label.position.y = 5.5;
+    label.scale.set(5, 1.25, 1);
+    group.add(label);
+    eggArena.add(group);
+    return { group, border, canvas, texture, text: null };
+  });
   const { scene: raceTrackModel } = await loader.loadAsync(
     new URL("../race-track.glb", import.meta.url).href
   );
@@ -420,9 +485,10 @@ export async function createWorld() {
   const cameraDirection = new THREE.Vector3();
 
   function resetCamera(state) {
-    if (state.minigame === "pillows") {
-      const height = Math.max(26, 22 / camera.aspect);
-      camPos.set(0, height, height * 0.55);
+    if (state.minigame === "pillows" || state.minigame === "eggs") {
+      const eggs = state.minigame === "eggs";
+      const height = eggs ? Math.max(48, 44 / camera.aspect) : Math.max(26, 22 / camera.aspect);
+      camPos.set(0, height, height * (eggs ? 0.18 : 0.55));
       return;
     }
     camPos.set(
@@ -435,11 +501,41 @@ export async function createWorld() {
     const pillowGame = state.minigame === "pillows";
     const doorGame = state.minigame === "doors";
     const trackGame = state.minigame === "track";
-    ground.visible = !trackGame;
-    track.visible = state.scene !== "lobby" && !pillowGame && !doorGame;
+    const eggGame = state.minigame === "eggs";
+    ground.visible = !trackGame && !eggGame;
+    track.visible = trackGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
     doorCourse.visible = doorGame;
+    eggArena.visible = eggGame;
+    if (eggGame) {
+      eggMeshes.forEach((mesh, index) => {
+        const egg = state.eggs[index];
+        mesh.visible = Boolean(egg);
+        if (!egg) return;
+        mesh.position.set(egg.x, eggFloorY(egg.x, egg.z) +
+          (egg.carrierId === null ? 0.05 : 2.2), egg.z);
+      });
+      pitMarkers.forEach((marker, index) => {
+        const pit = state.eggPits[index];
+        marker.group.visible = Boolean(pit);
+        if (!pit) return;
+        marker.group.position.set(pit.x, 0, pit.z);
+        const own = pit.playerId === state.id;
+        const text = `P${pit.number}${own ? " - YOU" : ""}`;
+        if (marker.text === text) return;
+        marker.text = text;
+        marker.border.material.color.setHex(own ? 0x33ff66 : 0xff6666);
+        const context = marker.canvas.getContext("2d");
+        context.fillStyle = own ? "#145c2b" : "#6b2020";
+        context.fillRect(0, 0, 256, 64);
+        context.fillStyle = "#ffffff";
+        context.font = "bold 36px sans-serif";
+        context.textAlign = "center";
+        context.fillText(text, 128, 45);
+        marker.texture.needsUpdate = true;
+      });
+    }
     if (doorGame) {
       state.doors.forEach((door, index) => gates[index].forEach((hinge, side) => {
         const shake = door.rattle[side] > 0 ? Math.sin(door.rattle[side] * 60) * 0.04 : 0;
@@ -476,6 +572,7 @@ export async function createWorld() {
       model.visible = Boolean(racer && (!racer.eliminated || (trackGame && trackY !== null)));
       if (!racer) return;
       model.position.set(racer.x, trackGame ? trackY ?? 0 :
+        (eggGame ? eggFloorY(racer.x, racer.z) : 0) +
         Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
       model.position.y += divePose(racer) * 0.8;
       model.rotation.set(-divePose(racer) * 0.75,
@@ -503,15 +600,17 @@ export async function createWorld() {
     lanButtonMat.color.setHex(nearLanButton ? 0x55ccff : 0x2288dd);
 
     chicken.position.set(state.x, trackGame ? playerTrackY ?? 0 :
+      (eggGame ? eggFloorY(state.x, state.z) : 0) +
       Math.abs(Math.sin(state.walk)) * 0.12, state.z);
     chicken.position.y += divePose(state) * 0.8;
     chicken.rotation.set(-divePose(state) * 0.75,
       state.yaw + CHICKEN_YAW_OFFSET + spinPose(state),
       moving ? Math.sin(state.walk) * 0.06 : 0);
-    const rivalMoving = ["track", "pillows", "doors"].includes(state.scene) &&
+    const rivalMoving = ["track", "pillows", "doors", "eggs"].includes(state.scene) &&
       dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
-      rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0, rival.z);
+      (eggGame ? eggFloorY(rival.x, rival.z) : 0) +
+      (rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0), rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
 
@@ -519,18 +618,18 @@ export async function createWorld() {
     const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
     const followHeight = trackGame ? trackChickenHeights.get("player") ?? 0 : 0;
     target.y = followHeight + 4.2;
-    if (pillowGame) {
-      const height = Math.max(26, 22 / camera.aspect);
-      target.set(0, height, height * 0.55);
+    if (pillowGame || eggGame) {
+      const height = eggGame ? Math.max(48, 44 / camera.aspect) : Math.max(26, 22 / camera.aspect);
+      target.set(0, height, height * (eggGame ? 0.18 : 0.55));
     }
     // The door course keeps the camera locked directly behind the player.
     if (doorGame) camPos.copy(target);
     else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
-    if (pillowGame) camera.lookAt(0, 0, 0);
+    if (pillowGame || eggGame) camera.lookAt(0, 0, 0);
     else camera.lookAt(state.x, followHeight + 1.6, state.z);
-    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || state.multiplayer ? "none" : "flex";
-    if (state.scene !== "lobby" && !pillowGame && !state.multiplayer) {
+    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || state.multiplayer ? "none" : "flex";
+    if (state.scene !== "lobby" && !pillowGame && !eggGame && !state.multiplayer) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
       camera.getWorldDirection(cameraDirection);
       const behind = direction.dot(cameraDirection) < 0;

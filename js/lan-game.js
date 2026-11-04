@@ -7,12 +7,14 @@ import {
 } from "./track.js";
 import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
+import { createEggRound, eggWalls } from "./eggs.js";
 
 export function createLanGame(minigame, playerIds, random = Math.random) {
   const game = createGame({ random });
   if (minigame === "track") game.enterTrack();
   else if (minigame === "pillows") game.enterPillows();
   else if (minigame === "doors") game.enterDoors();
+  else if (minigame === "eggs") game.enterEggs();
   else throw new Error("Unknown minigame");
   if (playerIds.length < 2 || playerIds.length > 8 || new Set(playerIds).size !== playerIds.length) {
     throw new Error("LAN games require 2-8 distinct players");
@@ -22,6 +24,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   state.winnerIds = [];
   const pillowRound = createPillowRound(random);
   const doorRound = createDoorRound(random);
+  const eggRound = createEggRound();
   const previousActionKeys = new Map();
   if (minigame === "pillows") pillowRound.reset(state, game.rival);
   if (minigame === "doors") doorRound.reset(state, game.rival);
@@ -42,6 +45,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       controls: { forward: 0, turn: 0 },
     };
   });
+  if (minigame === "eggs") eggRound.reset(state, racers);
   for (const racer of racers) previousActionKeys.set(racer.id, { e: false, space: false });
 
   function finish(winners) {
@@ -64,10 +68,15 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       return;
     }
     state.goTimer = Math.max(0, state.goTimer - dt);
+    if (minigame === "eggs") dt = Math.min(dt, state.eggTimeLeft);
     const previous = racers.map(({ x, z }) => ({ x, z }));
     for (const [index, racer] of racers.entries()) {
       const keys = inputs.get(racer.id) ?? {};
-      updateAbilities(racer, dt, keys, previousActionKeys.get(racer.id), !racer.eliminated);
+      const previousKeys = previousActionKeys.get(racer.id);
+      const eggPressed = minigame === "eggs" && keys.e === true && !previousKeys.e;
+      updateAbilities(racer, dt, minigame === "eggs" ? { ...keys, e: false } : keys,
+        previousKeys, !racer.eliminated);
+      if (minigame === "eggs") previousKeys.e = keys.e === true;
       if (racer.eliminated) continue;
       const forward = Number(Boolean(keys.w || keys.arrowup)) -
         Number(Boolean(keys.s || keys.arrowdown));
@@ -78,6 +87,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
         (racer.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
       racer.controls = { forward: movement, turn };
       const walls = minigame === "pillows" ? arenaWalls :
+        minigame === "eggs" ? eggWalls :
         [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, racer.doorTeam)];
       const onTrack = minigame === "track" ?
         moveTrackRacer(racer, dt, movement, turn, speed) : true;
@@ -86,6 +96,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
         continue;
       }
       if (minigame !== "track") moveRacer(racer, dt, movement, turn, speed, walls);
+      if (eggPressed) eggRound.interact(state, racer);
       racer.walk = movement ? racer.walk + dt * 11 : 0;
       if (minigame === "track") updateTrackProgress(racer);
     }
@@ -93,6 +104,10 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       pillowRound.update(state, racers[1], dt, previous[0], previous[1], racers, previous);
     } else if (minigame === "doors") {
       doorRound.update(state, racers[1], dt, racers);
+    } else if (minigame === "eggs") {
+      const winners = eggRound.update(state, racers, dt);
+      if (winners) finish(winners);
+      return;
     }
     const winners = racers.filter(racer => !racer.eliminated &&
       (minigame === "track"

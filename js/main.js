@@ -63,6 +63,7 @@ function startMinigame(selection) {
   if (selection === "random") game.enterMinigame();
   else if (selection === "track") game.enterTrack();
   else if (selection === "doors") game.enterDoors();
+  else if (selection === "eggs") game.enterEggs();
   else game.enterPillows();
   closeMenu();
   input.clear();
@@ -128,6 +129,8 @@ function raceProgress(racer) {
 }
 
 function updateUI() {
+  const controlsHelp = state.minigame === "eggs" ?
+    " | E pick up / drop egg | Space dive" : abilityHelp;
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
       game.nearLanButton() ? "Press E to host or join a LAN game" :
@@ -139,8 +142,11 @@ function updateUI() {
         state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
           state.minigame === "pillows" ? `${racer.lives} lives` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
+          state.minigame === "eggs" ? `${racer.eggScore} eggs` :
             raceProgress(racer)}`).join(" | ")
-      } | W/S move | A/D turn${abilityHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""} | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+    : state.minigame === "eggs"
+      ? `EGG HEIST | ${Math.ceil(state.eggTimeLeft)}s | You: ${state.eggScore} eggs | Rival: ${rival.eggScore} eggs | Your pit: P1 (green)${state.carryingEggId !== null ? " | Carrying an egg" : ""} | Steal from any pit | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "doors"
       ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn${abilityHelp}`
     : state.minigame === "pillows"
@@ -156,6 +162,9 @@ function updateUI() {
     (state.playerWon === null ? "DRAW!" : state.playerWon ? "VICTORY!" : "RIVAL WINS!");
   if (state.multiplayer) {
     result.textContent = state.winnerIds.length === 0 ? "DRAW!" :
+      state.winnerIds.length === state.racers.length ? "DRAW!" :
+      state.winnerIds.length > 1 ? `PLAYERS ${state.racers.filter(racer =>
+        state.winnerIds.includes(racer.id)).map(racer => racer.number).join(", ")} TIE!` :
       state.playerWon ? "VICTORY!" :
         `PLAYER ${state.racers.find(racer => racer.id === state.winnerIds[0]).number} WINS!`;
   }
