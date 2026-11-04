@@ -31,10 +31,11 @@ test("the button selection gives each minigame an equal random interval", () => 
     assert.equal(game.state.minigame, selected);
     assert.equal(game.state.scene, "countdown");
   }
-  assert.deepEqual(counts, { track: 250, pillows: 250, doors: 250, eggs: 250 });
+  assert.deepEqual(counts, { track: 200, pillows: 200, doors: 200, eggs: 200, "egg-battle": 200 });
   for (const [value, expected] of [
-    [0, "track"], [0.249999, "track"], [0.25, "pillows"], [0.499999, "pillows"],
-    [0.5, "doors"], [0.749999, "doors"], [0.75, "eggs"], [0.999999, "eggs"],
+    [0, "track"], [0.199999, "track"], [0.2, "pillows"], [0.399999, "pillows"],
+    [0.4, "doors"], [0.599999, "doors"], [0.6, "eggs"], [0.799999, "eggs"],
+    [0.8, "egg-battle"], [0.999999, "egg-battle"],
   ]) {
     choice = value;
     assert.equal(game.enterMinigame(), expected);

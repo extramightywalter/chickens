@@ -17,21 +17,39 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-an equal one-in-four Race, Pillow Dodge, Door Dash, or Egg Heist selection, or choose
+an equal one-in-five Race, Pillow Dodge, Door Dash, Egg Heist, or Egg Battle selection, or choose
 **Choose minigame** to start any game directly.
 During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
-Press **Space** to dive forward in any game. Spin and dive each have their own
+Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
 three-second cooldown.
 
+- **Egg Battle:** Fight the red rival, or 2-8 human players over LAN, in a
+  36-by-36 arena (twice Pillow Dodge's width and length). The camera stays
+  directly behind your chicken. Twenty-five eggs are scattered across the map.
+  Press **E** near a ground egg to carry it; you can hold only one at a time.
+  Press **Space** to throw it in the direction you face. Empty-handed Space
+  makes you jump in place, or keep moving normally while airborne, instead of diving.
+  Each thrown egg hits at most one chicken for **1 damage**; everyone starts
+  with **3 HP**. Jump over incoming eggs to dodge. Chickens at zero HP are
+  eliminated; the last survivor wins, and mutual final hits are a draw.
+  Holding E or Space does not repeat the action. Used and missed eggs reappear
+  at their scattered starting positions after two seconds, so ammo never runs out.
+  There is no spin ability in this mode. The rival collects eggs, aims, and throws
+  using the same movement speed, pickup range, and throw rules as the player.
 - **Race:** Start beneath the course arch. The first racer to touch the red
   landing at the far-side finish wins.
 - **Egg Heist:** Collect eggs from the middle of `assets/models/egg-game-map.glb`
   and drop them in your outer pit, outlined green and labeled **YOU**.
+  The center pile contains three eggs per player (six in solo, including the rival).
+  The camera follows directly behind your chicken, turning with you.
   Press **E** near an egg to pick it up; press E again to drop it at your feet.
   You can carry only one egg at a time, and holding E does not repeat the action.
-  Players can steal dropped eggs from anyone's pit. Only eggs on the ground inside
-  your pit count, not eggs you are carrying. After **30 seconds**, the highest
+  Empty-handed chickens can also press **E** near another chicken to steal its
+  carried egg. E takes the nearest egg within reach, whether carried or dropped;
+  if you already have an egg, E drops it instead. Holding E does not steal repeatedly.
+  Players can still steal dropped eggs from anyone's pit. Only eggs on the ground inside
+  your pit count, not eggs you are carrying. After **1 minute 30 seconds**, the highest
   score wins; equal scores tie. Pit assignments maximize the minimum distance
   between players. Solo play includes an egg-collecting, stealing rival.
 - **Pillow Dodge:** Survive longer than the rival in a small enclosed arena.
@@ -95,9 +113,13 @@ same server; GitHub Pages and the Python static server support solo games only.
 Three.js still loads from the CDN, so each device needs internet access.
 After updating game code, restart `npm start` and refresh each player's page.
 The running LAN server keeps its game rules in memory until restarted.
+Refreshing only the browser does not update LAN round rules. Stop the old
+server with Ctrl+C, run `npm start` again, then refresh every player's page
+and create a new room. Served files are revalidated on refresh so clients get
+the current camera and rendering code.
 
 Walk into Laness and go to the **blue button on its right side**, then press
-**E**. Choose **Host a game**, select **Random** or any of the same four
+**E**. Choose **Host a game**, select **Random** or any of the same five
 minigames offered at the red button, and choose **2-8 slots**. The host fills
 the first slot. Other players choose **Play a game** and click a game in the
 live list to join. The shared three-second countdown starts automatically
@@ -112,7 +134,9 @@ opposite secret doors at each gate; caught chickens are eliminated, and the
 first finisher (or last survivor) wins. Simultaneous winners share a victory;
 simultaneous final eliminations are a draw.
 Egg Heist supports all 2-8 players, with server-authoritative egg pickup,
-stealing, pit scores, and a 30-second timer. Tied high scorers share the win.
+stealing, pit scores, and a 90-second timer. Tied high scorers share the win.
+Egg Battle synchronizes pickups, throws, jumps, HP, and eliminations on the server;
+eliminated players watch until the last chicken remains.
 
 Leave a waiting room to free your slot; if the host leaves, the room closes.
 If anyone disconnects during a round, it ends for everyone with a notice.
@@ -136,6 +160,8 @@ red-button minigame selection remains unchanged.
   monster chase, and win rules; independent of the DOM and Three.js.
 - `js/eggs.js`: Egg Heist pit spacing, pickup/drop, stealing, scoring, timer,
   and rival controls; independent of the DOM and Three.js.
+- `js/egg-battle.js`: Egg Battle arena, scattered pickups, jumping, projectile
+  hits, HP, and rival aiming; independent of the DOM and Three.js.
 - `js/track.js`: shared track and lobby layouts, wall bounds, and gameplay constants.
 - `js/world.js`: Three.js scene, lobby building models, `assets/models/chicken.glb` racers,
   animation, and camera.

@@ -10,7 +10,8 @@ import {
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
 import { DIVE_DURATION, SPIN_DURATION } from "./lobby.js";
-import { EGG_COUNT, EGG_MAP_SCALE, EGG_PIT_HALF_SIZE } from "./eggs.js";
+import { EGG_LIMIT, EGG_MAP_SCALE, EGG_PIT_HALF_SIZE } from "./eggs.js";
+import { BATTLE_ARENA, battleWalls } from "./egg-battle.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
 const MONSTER_SCALE = 1.4;
@@ -95,7 +96,30 @@ export async function createWorld() {
   const arena = new THREE.Group();
   const doorCourse = new THREE.Group();
   const eggArena = new THREE.Group();
-  scene.add(track, lobby, arena, doorCourse, eggArena);
+  const battleArena = new THREE.Group();
+  scene.add(track, lobby, arena, doorCourse, eggArena, battleArena);
+  const battleFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(BATTLE_ARENA.maxX - BATTLE_ARENA.minX,
+      BATTLE_ARENA.maxZ - BATTLE_ARENA.minZ),
+    new THREE.MeshLambertMaterial({ color: 0x78a760 })
+  );
+  battleFloor.rotation.x = -Math.PI / 2;
+  battleFloor.position.y = 0.025;
+  battleFloor.receiveShadow = true;
+  battleArena.add(battleFloor);
+  for (const wall of battleWalls) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(wall.maxX - wall.minX, 0.45, wall.maxZ - wall.minZ),
+      new THREE.MeshLambertMaterial({ color: 0xf9ed69 })
+    );
+    rail.position.set((wall.minX + wall.maxX) / 2, 0.225, (wall.minZ + wall.maxZ) / 2);
+    battleArena.add(rail);
+  }
+  const battleGrid = new THREE.GridHelper(
+    BATTLE_ARENA.maxX - BATTLE_ARENA.minX, 12, 0x526e38, 0x6a9550
+  );
+  battleGrid.position.y = 0.03;
+  battleArena.add(battleGrid);
   const arenaFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.maxX - ARENA.minX, ARENA.maxZ - ARENA.minZ),
     new THREE.MeshLambertMaterial({ color: 0x527bac })
@@ -163,12 +187,8 @@ export async function createWorld() {
   eggModel.scale.setScalar(eggScale);
   eggModel.position.set(-eggCenter.x * eggScale, -eggBounds.min.y * eggScale,
     -eggCenter.z * eggScale);
-  const eggMeshes = Array.from({ length: EGG_COUNT }, () => {
-    const group = new THREE.Group();
-    group.add(eggModel.clone(true));
-    eggArena.add(group);
-    return group;
-  });
+  const eggMeshes = [];
+  const battleEggMeshes = [];
   const pitMarkers = Array.from({ length: 8 }, () => {
     const group = new THREE.Group();
     const size = EGG_PIT_HALF_SIZE * 2;
@@ -485,16 +505,23 @@ export async function createWorld() {
   const cameraDirection = new THREE.Vector3();
 
   function resetCamera(state) {
-    if (state.minigame === "pillows" || state.minigame === "eggs") {
-      const eggs = state.minigame === "eggs";
-      const height = eggs ? Math.max(48, 44 / camera.aspect) : Math.max(26, 22 / camera.aspect);
-      camPos.set(0, height, height * (eggs ? 0.18 : 0.55));
+    if (state.minigame === "pillows") {
+      const height = Math.max(26, 22 / camera.aspect);
+      camPos.set(0, height, height * 0.55);
       return;
     }
     camPos.set(
       state.x - Math.sin(state.yaw) * 6.5, 4.2,
       state.z - Math.cos(state.yaw) * 6.5
     );
+    if (state.minigame === "eggs") positionEggCamera(camPos, state);
+  }
+
+  function positionEggCamera(position, state) {
+    position.x = THREE.MathUtils.clamp(position.x, -EGG_LIMIT, EGG_LIMIT);
+    position.z = THREE.MathUtils.clamp(position.z, -EGG_LIMIT, EGG_LIMIT);
+    position.y = Math.max(eggFloorY(state.x, state.z),
+      eggFloorY(position.x, position.z)) + 4.2;
   }
 
   function render(state, rival, dt, moving, nearButton, nearLanButton) {
@@ -502,13 +529,36 @@ export async function createWorld() {
     const doorGame = state.minigame === "doors";
     const trackGame = state.minigame === "track";
     const eggGame = state.minigame === "eggs";
+    const battleGame = state.minigame === "egg-battle";
     ground.visible = !trackGame && !eggGame;
     track.visible = trackGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
     doorCourse.visible = doorGame;
     eggArena.visible = eggGame;
+    battleArena.visible = battleGame;
+    if (battleGame) {
+      while (battleEggMeshes.length < state.battleEggs.length) {
+        const mesh = new THREE.Group();
+        mesh.add(eggModel.clone(true));
+        battleArena.add(mesh);
+        battleEggMeshes.push(mesh);
+      }
+      battleEggMeshes.forEach((mesh, index) => {
+        const egg = state.battleEggs[index];
+        mesh.visible = Boolean(egg && egg.respawn === 0);
+        if (!egg) return;
+        mesh.position.set(egg.x, egg.y, egg.z);
+        mesh.rotation.x = egg.flying ? mesh.rotation.x + dt * 12 : 0;
+      });
+    }
     if (eggGame) {
+      while (eggMeshes.length < state.eggs.length) {
+        const mesh = new THREE.Group();
+        mesh.add(eggModel.clone(true));
+        eggArena.add(mesh);
+        eggMeshes.push(mesh);
+      }
       eggMeshes.forEach((mesh, index) => {
         const egg = state.eggs[index];
         mesh.visible = Boolean(egg);
@@ -562,6 +612,7 @@ export async function createWorld() {
     const rivalTrackY = trackGame && !state.multiplayer ?
       trackChickenY("rival", rival.walk, rival.eliminated, dt) : null;
     rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer &&
+      (!battleGame || !rival.eliminated) &&
       (!trackGame || !rival.eliminated || rivalTrackY !== null);
     chicken.visible = !state.eliminated || (trackGame && playerTrackY !== null);
     const opponents = state.multiplayer ? state.racers.filter(racer => racer.id !== state.id) : [];
@@ -574,7 +625,7 @@ export async function createWorld() {
       model.position.set(racer.x, trackGame ? trackY ?? 0 :
         (eggGame ? eggFloorY(racer.x, racer.z) : 0) +
         Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
-      model.position.y += divePose(racer) * 0.8;
+      model.position.y += divePose(racer) * 0.8 + (battleGame ? racer.jumpHeight : 0);
       model.rotation.set(-divePose(racer) * 0.75,
         racer.yaw + CHICKEN_YAW_OFFSET + spinPose(racer),
         racer.controls.forward && !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0);
@@ -602,31 +653,34 @@ export async function createWorld() {
     chicken.position.set(state.x, trackGame ? playerTrackY ?? 0 :
       (eggGame ? eggFloorY(state.x, state.z) : 0) +
       Math.abs(Math.sin(state.walk)) * 0.12, state.z);
-    chicken.position.y += divePose(state) * 0.8;
+    chicken.position.y += divePose(state) * 0.8 + (battleGame ? state.jumpHeight : 0);
     chicken.rotation.set(-divePose(state) * 0.75,
       state.yaw + CHICKEN_YAW_OFFSET + spinPose(state),
       moving ? Math.sin(state.walk) * 0.06 : 0);
-    const rivalMoving = ["track", "pillows", "doors", "eggs"].includes(state.scene) &&
+    const rivalMoving = ["track", "pillows", "doors", "eggs", "egg-battle"].includes(state.scene) &&
       dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
       (eggGame ? eggFloorY(rival.x, rival.z) : 0) +
       (rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0), rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
+    rivalChicken.position.y += battleGame ? rival.jumpHeight : 0;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
 
     const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
     const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
-    const followHeight = trackGame ? trackChickenHeights.get("player") ?? 0 : 0;
+    const followHeight = trackGame ? trackChickenHeights.get("player") ?? 0 :
+      eggGame ? eggFloorY(state.x, state.z) : 0;
     target.y = followHeight + 4.2;
-    if (pillowGame || eggGame) {
-      const height = eggGame ? Math.max(48, 44 / camera.aspect) : Math.max(26, 22 / camera.aspect);
-      target.set(0, height, height * (eggGame ? 0.18 : 0.55));
+    if (pillowGame) {
+      const height = Math.max(26, 22 / camera.aspect);
+      target.set(0, height, height * 0.55);
     }
-    // The door course keeps the camera locked directly behind the player.
-    if (doorGame) camPos.copy(target);
+    if (eggGame) positionEggCamera(target, state);
+    // Keep the chase camera directly behind the player in these arenas.
+    if (doorGame || eggGame || battleGame) camPos.copy(target);
     else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
-    if (pillowGame || eggGame) camera.lookAt(0, 0, 0);
+    if (pillowGame) camera.lookAt(0, 0, 0);
     else camera.lookAt(state.x, followHeight + 1.6, state.z);
     rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || state.multiplayer ? "none" : "flex";
     if (state.scene !== "lobby" && !pillowGame && !eggGame && !state.multiplayer) {

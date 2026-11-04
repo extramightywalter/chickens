@@ -187,6 +187,7 @@ export function createLanServer() {
     response.writeHead(200, {
       "Content-Type": types[extname(file)] ?? "application/octet-stream",
       "Content-Length": info.size,
+      "Cache-Control": "no-cache",
     });
     if (request.method === "HEAD") response.end();
     else createReadStream(file).on("error", error => response.destroy(error)).pipe(response);

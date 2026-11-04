@@ -64,6 +64,7 @@ function startMinigame(selection) {
   else if (selection === "track") game.enterTrack();
   else if (selection === "doors") game.enterDoors();
   else if (selection === "eggs") game.enterEggs();
+  else if (selection === "egg-battle") game.enterEggBattle();
   else game.enterPillows();
   closeMenu();
   input.clear();
@@ -129,8 +130,9 @@ function raceProgress(racer) {
 }
 
 function updateUI() {
-  const controlsHelp = state.minigame === "eggs" ?
-    " | E pick up / drop egg | Space dive" : abilityHelp;
+  const controlsHelp = state.minigame === "egg-battle" ?
+    " | E pick up egg | Space throw egg / jump when empty-handed" : state.minigame === "eggs" ?
+    " | E pick up / steal / drop egg | Space dash (stuns on contact)" : abilityHelp;
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
       game.nearLanButton() ? "Press E to host or join a LAN game" :
@@ -140,13 +142,15 @@ function updateUI() {
     : state.multiplayer
       ? `LAN ${state.minigame.toUpperCase()} | You: Player ${state.number} | ${
         state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
-          state.minigame === "pillows" ? `${racer.lives} lives` :
+          ["pillows", "egg-battle"].includes(state.minigame) ? `${racer.lives}/3 HP` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
           state.minigame === "eggs" ? `${racer.eggScore} eggs` :
-            raceProgress(racer)}`).join(" | ")
-      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""} | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+            raceProgress(racer)}${racer.stunTimer > 0 ? " (stunned)" : ""}`).join(" | ")
+      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+    : state.minigame === "egg-battle"
+      ? `EGG BATTLE | You: ${state.lives}/3 HP | Rival: ${rival.lives}/3 HP | Last chicken standing wins${state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump"} | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "eggs"
-      ? `EGG HEIST | ${Math.ceil(state.eggTimeLeft)}s | You: ${state.eggScore} eggs | Rival: ${rival.eggScore} eggs | Your pit: P1 (green)${state.carryingEggId !== null ? " | Carrying an egg" : ""} | Steal from any pit | W/S move | A/D turn${controlsHelp}`
+      ? `EGG HEIST | ${Math.ceil(state.eggTimeLeft)}s | You: ${state.eggScore} eggs | Rival: ${rival.eggScore} eggs | Your pit: P1 (green)${state.carryingEggId !== null ? " | Carrying an egg" : ""}${state.stunTimer > 0 ? " | STUNNED" : ""} | Steal from any pit | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "doors"
       ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn${abilityHelp}`
     : state.minigame === "pillows"

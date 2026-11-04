@@ -121,7 +121,7 @@ export function createSoundEffects() {
   }
 
   function updateRace(scene, elapsed) {
-    if (scene !== "track" && scene !== "pillows" && scene !== "doors" && scene !== "eggs") return;
+    if (!["track", "pillows", "doors", "eggs", "egg-battle"].includes(scene)) return;
     playerSquawkIn -= elapsed;
     rivalSquawkIn -= elapsed;
     if (playerSquawkIn <= 0) {

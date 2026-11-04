@@ -83,6 +83,11 @@ test("rooms advertise host occupancy, enforce settings, and start only when all 
       assert.deepEqual(started.racers.map(racer => racer.id), clients.slice(0, slots).map(client => client.id));
       if (selection === "random") assert.ok(MINIGAMES.includes(started.state.minigame));
       else assert.equal(started.state.minigame, selection);
+      if (started.state.minigame === "eggs") {
+        assert.equal(started.state.eggs.length, slots * 3);
+        assert.equal(started.state.eggTimeLeft, 90);
+        assert.equal(started.state.eggPits.length, slots);
+      }
       assert.equal((await host.action("leave")).status, 200);
     }
   }
@@ -145,7 +150,9 @@ test("active players share authoritative human movement and disconnects end the 
 test("LAN server serves game assets but not source-server files or hidden files", async t => {
   const base = await setup(t);
   for (const path of ["/", "/styles.css", "/js/lan-game.js", "/assets/models/chicken.glb"]) {
-    assert.equal((await fetch(`${base}${path}`)).status, 200);
+    const response = await fetch(`${base}${path}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-cache");
   }
   for (const path of ["/server.js", "/package.json", "/.git/config", "/js/../server.js"]) {
     assert.equal((await fetch(`${base}${path}`)).status, 404);
