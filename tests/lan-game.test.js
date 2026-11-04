@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGame } from "../js/lobby.js";
+import { ABILITY_COOLDOWN, createGame, DIVE_SPEED_MULTIPLIER } from "../js/lobby.js";
 import { createLanGame } from "../js/lan-game.js";
 import { MINIGAMES } from "../js/pillows.js";
 import {
   DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_XS, FINISH_Z, GATE_HALF_DEPTH,
 } from "../js/doors.js";
 import {
-  FINISH_LANDING, LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints, isTrackSupported, lobbyStructures,
+  FINISH_LANDING, LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints,
+  isTrackSupported, lobbyStructures,
 } from "../js/track.js";
 
 const finishContact = {
@@ -73,6 +74,27 @@ test("only each human's own controls move their chicken at the normal speed", ()
     assert.ok(Math.abs(Math.hypot(game.racers[7].x - before[7].x,
       game.racers[7].z - before[7].z) - SPEED * 0.05) < 1e-10);
   }
+});
+
+test("LAN players can independently spin and dive using E and Space", () => {
+  const game = round("pillows");
+  game.update(3);
+  const [player, other] = game.racers;
+  const before = { x: player.x, z: player.z };
+  const otherBefore = { x: other.x, z: other.z };
+  game.update(0.1, new Map([[player.id, { e: true, w: true, " ": true }]]));
+  assert.ok(player.spinTimer > 0);
+  assert.ok(player.diveTimer > 0);
+  assert.ok(Math.abs(Math.hypot(player.x - before.x, player.z - before.z) -
+    SPEED * 0.1 * DIVE_SPEED_MULTIPLIER * 0.5) < 1e-10);
+  assert.equal(other.spinTimer, 0);
+  assert.equal(other.diveTimer, 0);
+  assert.ok(player.spinCooldown > 0);
+  assert.ok(player.diveCooldown > 0);
+  assert.deepEqual({ x: other.x, z: other.z }, otherBefore);
+  game.update(ABILITY_COOLDOWN, new Map());
+  assert.equal(player.spinCooldown, 0);
+  assert.equal(player.diveCooldown, 0);
 });
 
 test("one forward tick from any LAN track spawn cannot win the race", () => {

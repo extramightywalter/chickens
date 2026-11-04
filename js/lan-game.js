@@ -1,4 +1,7 @@
-import { createGame, moveRacer, moveTrackRacer, updateTrackProgress } from "./lobby.js";
+import {
+  createGame, DIVE_SPEED_MULTIPLIER, moveRacer, moveTrackRacer, updateAbilities,
+  updateTrackProgress,
+} from "./lobby.js";
 import {
   LAPS_TO_WIN, SPEED, START, checkpoints, touchesFinishLanding,
 } from "./track.js";
@@ -19,6 +22,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   state.winnerIds = [];
   const pillowRound = createPillowRound(random);
   const doorRound = createDoorRound(random);
+  const previousActionKeys = new Map();
   if (minigame === "pillows") pillowRound.reset(state, game.rival);
   if (minigame === "doors") doorRound.reset(state, game.rival);
   const racers = playerIds.map((id, index) => {
@@ -33,10 +37,12 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
           Math.cos(index / playerIds.length * Math.PI * 2) * 5,
       yaw: minigame === "track" ? Math.PI / 2 : minigame === "doors" ? 0 : Math.PI,
       laps: 0, nextCheckpoint: 1, walk: 0, lives: PILLOW_LIVES,
+      spinTimer: 0, diveTimer: 0, spinCooldown: 0, diveCooldown: 0,
       eliminated: false, doorTeam: index % 2,
       controls: { forward: 0, turn: 0 },
     };
   });
+  for (const racer of racers) previousActionKeys.set(racer.id, { e: false, space: false });
 
   function finish(winners) {
     state.scene = "finished";
@@ -46,6 +52,10 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   function update(dt, inputs = new Map()) {
     if (state.scene === "finished") return;
     if (state.scene === "countdown") {
+      for (const racer of racers) {
+        updateAbilities(racer, 0, inputs.get(racer.id) ?? {},
+          previousActionKeys.get(racer.id), false);
+      }
       state.countdown = Math.max(0, state.countdown - dt);
       if (state.countdown === 0) {
         state.scene = minigame;
@@ -56,23 +66,27 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     state.goTimer = Math.max(0, state.goTimer - dt);
     const previous = racers.map(({ x, z }) => ({ x, z }));
     for (const [index, racer] of racers.entries()) {
-      if (racer.eliminated) continue;
       const keys = inputs.get(racer.id) ?? {};
+      updateAbilities(racer, dt, keys, previousActionKeys.get(racer.id), !racer.eliminated);
+      if (racer.eliminated) continue;
       const forward = Number(Boolean(keys.w || keys.arrowup)) -
         Number(Boolean(keys.s || keys.arrowdown));
       const turn = Number(Boolean(keys.a || keys.arrowleft)) -
         Number(Boolean(keys.d || keys.arrowright));
-      racer.controls = { forward, turn };
+      const movement = racer.diveTimer > 0 ? Math.max(forward, 1) : forward;
+      const speed = SPEED * (racer.spinTimer > 0 ? 0.5 : 1) *
+        (racer.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
+      racer.controls = { forward: movement, turn };
       const walls = minigame === "pillows" ? arenaWalls :
         [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, racer.doorTeam)];
       const onTrack = minigame === "track" ?
-        moveTrackRacer(racer, dt, forward, turn, SPEED) : true;
+        moveTrackRacer(racer, dt, movement, turn, speed) : true;
       if (minigame === "track" && !onTrack) {
         racer.eliminated = true;
         continue;
       }
-      if (minigame !== "track") moveRacer(racer, dt, forward, turn, SPEED, walls);
-      racer.walk = forward ? racer.walk + dt * 11 : 0;
+      if (minigame !== "track") moveRacer(racer, dt, movement, turn, speed, walls);
+      racer.walk = movement ? racer.walk + dt * 11 : 0;
       if (minigame === "track") updateTrackProgress(racer);
     }
     if (minigame === "pillows") {

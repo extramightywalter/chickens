@@ -12,7 +12,7 @@ const types = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
   ".png": "image/png", ".glb": "model/gltf-binary",
 };
-const controls = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"];
+const controls = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "e", " "];
 
 export function createLanServer() {
   const players = new Map();

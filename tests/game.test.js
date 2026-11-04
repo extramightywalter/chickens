@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { collide, createGame as createRandomGame, moveTrackRacer } from "../js/lobby.js";
+import {
+  ABILITY_COOLDOWN, collide, createGame as createRandomGame, DIVE_DURATION,
+  DIVE_SPEED_MULTIPLIER, moveTrackRacer, SPIN_DURATION,
+} from "../js/lobby.js";
 import {
   BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, FINISH_LANDING, LAPS_TO_WIN, LOBBY_BOUNDS,
   LOBBY_BUILDING_WIDTH, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH,
@@ -108,6 +111,61 @@ test("movement and turning retain WASD and arrow key controls", () => {
     game.update(0.05, 0.05, { [key]: true });
     assert.equal(game.state.yaw > before, key === "a" || key === "arrowleft");
   }
+});
+
+test("E spins for two seconds and halves movement speed until the spin ends", () => {
+  const game = createGame();
+  game.enterPillows();
+  game.update(3);
+  const start = { x: game.state.x, z: game.state.z };
+  game.update(0.1, 0.1, { e: true, w: true });
+  assert.equal(game.state.spinTimer, SPIN_DURATION - 0.1);
+  assert.ok(Math.abs(Math.hypot(game.state.x - start.x, game.state.z - start.z) -
+    SPEED * 0.1 * 0.5) < 1e-10);
+  game.update(SPIN_DURATION, SPIN_DURATION);
+  const before = { x: game.state.x, z: game.state.z };
+  game.update(0.1, 0.1, { w: true });
+  assert.equal(game.state.spinTimer, 0);
+  assert.ok(Math.abs(Math.hypot(game.state.x - before.x, game.state.z - before.z) -
+    SPEED * 0.1) < 1e-10);
+});
+
+test("spin and dive each wait three seconds before becoming available again", () => {
+  const game = createGame();
+  game.enterPillows();
+  game.update(3);
+  game.update(0.1, 0.1, { e: true, " ": true });
+  assert.ok(game.state.spinCooldown > 0);
+  assert.ok(game.state.diveCooldown > 0);
+  game.update(SPIN_DURATION, SPIN_DURATION);
+  assert.ok(game.state.spinCooldown > 0);
+  assert.ok(game.state.diveCooldown > 0);
+  assert.equal(game.state.spinTimer, 0);
+  assert.equal(game.state.diveTimer, 0);
+  game.update(0.1, 0.1, { e: true, " ": true });
+  assert.equal(game.state.spinTimer, 0);
+  assert.equal(game.state.diveTimer, 0);
+  game.update(0.1, 0.1);
+  game.update(ABILITY_COOLDOWN - SPIN_DURATION - 0.2, ABILITY_COOLDOWN - SPIN_DURATION - 0.2);
+  assert.equal(game.state.spinCooldown, 0);
+  assert.equal(game.state.diveCooldown, 0);
+  assert.equal(game.state.spinTimer, 0);
+  assert.equal(game.state.diveTimer, 0);
+  game.update(0.1, 0.1, { e: true, " ": true });
+  assert.ok(game.state.spinTimer > 0);
+  assert.ok(game.state.diveTimer > 0);
+});
+
+test("Space triggers a forward dive even without a movement key", () => {
+  assert.equal(DIVE_SPEED_MULTIPLIER, 1.5);
+  const game = createGame();
+  game.enterPillows();
+  game.update(3);
+  const start = { x: game.state.x, z: game.state.z };
+  game.update(0.1, 0.1, { " ": true });
+  assert.equal(game.state.diveTimer, DIVE_DURATION - 0.1);
+  assert.ok(Math.abs(Math.hypot(game.state.x - start.x, game.state.z - start.z) -
+    SPEED * 0.1 * DIVE_SPEED_MULTIPLIER) < 1e-10);
 });
 
 test("countdown uses elapsed time and grants neither racer a head start", () => {

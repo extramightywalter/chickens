@@ -5,6 +5,30 @@ import {
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 import { DOORS_START, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
 
+export const SPIN_DURATION = 2;
+export const DIVE_DURATION = 0.8;
+export const ABILITY_COOLDOWN = 3;
+export const DIVE_SPEED_MULTIPLIER = 1.5;
+
+export function updateAbilities(racer, dt, keys, previousKeys, active) {
+  racer.spinCooldown = Math.max(0, racer.spinCooldown - dt);
+  racer.diveCooldown = Math.max(0, racer.diveCooldown - dt);
+  const spinPressed = keys.e === true;
+  const divePressed = keys[" "] === true;
+  if (active && spinPressed && !previousKeys.e && racer.spinCooldown === 0) {
+    racer.spinTimer = SPIN_DURATION;
+    racer.spinCooldown = ABILITY_COOLDOWN;
+  }
+  if (active && divePressed && !previousKeys.space && racer.diveCooldown === 0) {
+    racer.diveTimer = DIVE_DURATION;
+    racer.diveCooldown = ABILITY_COOLDOWN;
+  }
+  previousKeys.e = spinPressed;
+  previousKeys.space = divePressed;
+  racer.spinTimer = Math.max(0, racer.spinTimer - dt);
+  racer.diveTimer = Math.max(0, racer.diveTimer - dt);
+}
+
 export function collide(px, pz, walls) {
   for (const wall of walls) {
     const cx = Math.max(wall.minX, Math.min(px, wall.maxX));
@@ -69,12 +93,14 @@ export function createGame({ random = Math.random } = {}) {
   const rival = {};
   const pillowRound = createPillowRound(random);
   const doorRound = createDoorRound(random);
+  let previousActionKeys = { e: false, space: false };
   let driver;
 
   function setScene(scene, spawn, yaw) {
     Object.assign(state, {
       scene, x: spawn.x, z: spawn.z, yaw,
       laps: 0, nextCheckpoint: 1, walk: 0,
+      spinTimer: 0, diveTimer: 0, spinCooldown: 0, diveCooldown: 0,
       countdown: 0, goTimer: 0, playerWon: null,
       minigame: null, pillows: [], survivalTime: 0, hit: null, lives: 0, cannonYaws: [],
       doors: [], monster: null, caught: null,
@@ -83,9 +109,11 @@ export function createGame({ random = Math.random } = {}) {
     Object.assign(rival, {
       x: START.x + 1.6, z: START.z, yaw: Math.PI / 2,
       laps: 0, nextCheckpoint: 1, target: 1, walk: 0,
+      spinTimer: 0, diveTimer: 0, spinCooldown: 0, diveCooldown: 0,
       controls: { forward: 1, turn: 0 }, intent: "race", lives: 0, eliminated: false,
     });
     driver = { reaction: 0 };
+    previousActionKeys = { e: false, space: false };
   }
 
   function nearButton() {
@@ -168,6 +196,8 @@ export function createGame({ random = Math.random } = {}) {
 
   function update(dt, elapsed = dt, keys = {}) {
     let moving = false;
+    updateAbilities(state, dt, keys, previousActionKeys,
+      ["lobby", "track", "pillows", "doors"].includes(state.scene));
     if (state.scene === "countdown") {
       state.countdown = Math.max(0, state.countdown - elapsed);
       if (state.countdown === 0) {
@@ -185,7 +215,10 @@ export function createGame({ random = Math.random } = {}) {
       let fwd = 0;
       if (keys["w"] || keys["arrowup"]) fwd += 1;
       if (keys["s"] || keys["arrowdown"]) fwd -= 1;
+      if (state.diveTimer > 0) fwd = Math.max(fwd, 1);
       moving = fwd !== 0;
+      const speed = SPEED * (state.spinTimer > 0 ? 0.5 : 1) *
+        (state.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
       const walls = state.scene === "lobby" ? lobbyWalls :
         state.scene === "pillows" ? arenaWalls :
         state.scene === "doors" ? [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, "player")] :
@@ -193,7 +226,7 @@ export function createGame({ random = Math.random } = {}) {
       const previousPlayer = { x: state.x, z: state.z };
       const previousRival = { x: rival.x, z: rival.z };
       if (state.scene === "track") {
-        if (!moveTrackRacer(state, dt, fwd, turn, SPEED)) {
+        if (!moveTrackRacer(state, dt, fwd, turn, speed)) {
           state.eliminated = true;
           finishRace(false);
         } else {
@@ -201,7 +234,7 @@ export function createGame({ random = Math.random } = {}) {
         }
         if (state.scene === "track") moveRival(dt);
       } else {
-        moveRacer(state, dt, fwd, turn, SPEED, walls);
+        moveRacer(state, dt, fwd, turn, speed, walls);
       }
       if (state.scene === "pillows") {
         pillowRound.chooseControls(state, rival, dt);

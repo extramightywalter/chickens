@@ -19,6 +19,8 @@ entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
 an equal one-in-three Race, Pillow Dodge, or Door Dash selection, or choose
 **Choose minigame** to start any game directly.
+During a game, press **E** to spin for two seconds (movement is half speed) or
+press **Space** to dive forward. Each ability has its own three-second cooldown.
 
 - **Race:** Start beneath the course arch. The first racer to touch the red
   landing at the far-side finish wins.
@@ -89,7 +91,7 @@ the first slot. Other players choose **Play a game** and click a game in the
 live list to join. The shared three-second countdown starts automatically
 when the final slot fills; there are no AI players or extra Start buttons.
 
-All chickens, controls, hazards, and results are synchronized by the server.
+All chickens, controls, abilities, hazards, and results are synchronized by the server.
 Race starts beneath the arch and is won by reaching the far-side finish or
 touching the red landing there.
 Pillow Dodge eliminates chickens at zero lives

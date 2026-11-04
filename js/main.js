@@ -18,6 +18,7 @@ const gameMenu = document.getElementById("game-menu");
 const menuOptions = document.getElementById("menu-options");
 const minigameOptions = document.getElementById("minigame-options");
 const menuTitle = document.getElementById("menu-title");
+const abilityHelp = " | E spin (2s, half speed, 3s cooldown) | Space dive (3s cooldown)";
 let menuStep = null;
 const lanMenu = createLanMenu({
   choices: Object.fromEntries([...minigameOptions.querySelectorAll("[data-minigame]")]
@@ -139,12 +140,12 @@ function updateUI() {
           state.minigame === "pillows" ? `${racer.lives} lives` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
             raceProgress(racer)}`).join(" | ")
-      } | W/S move | A/D turn${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+      } | W/S move | A/D turn${abilityHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
     : state.minigame === "doors"
-      ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn`
+      ? `DOOR DASH | Doors: You ${doorsPassed(state)}/${DOOR_COUNT} | Rival ${doorsPassed(rival)}/${DOOR_COUNT} | Monster ${Math.max(0, Math.min(state.z, rival.z) - state.monster.z).toFixed(0)}m behind | One door per gate is secretly yours | W/S move | A/D turn${abilityHelp}`
     : state.minigame === "pillows"
-      ? `PILLOW DODGE | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Survived: ${state.survivalTime.toFixed(1)}s | W/S move | A/D turn${rival.intent === "tired" ? " | Rival is tired!" : ""}`
-      : `RACE | You: ${raceProgress(state)} | Red rival: ${raceProgress(rival)} | W/S move | A/D turn | Follow the arrows`;
+      ? `PILLOW DODGE | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Survived: ${state.survivalTime.toFixed(1)}s | W/S move | A/D turn${abilityHelp}${rival.intent === "tired" ? " | Rival is tired!" : ""}`
+      : `RACE | You: ${raceProgress(state)} | Red rival: ${raceProgress(rival)} | W/S move | A/D turn${abilityHelp} | Follow the arrows`;
   const playing = state.scene === state.minigame;
   countdown.textContent = playing && state.goTimer > 0
     ? "GO!" : String(Math.ceil(state.countdown));

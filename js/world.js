@@ -9,10 +9,15 @@ import {
   BUTTON, CELL, CHICKEN_SCALE, FINISH_LANDING, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP,
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
+import { DIVE_DURATION, SPIN_DURATION } from "./lobby.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
 const MONSTER_SCALE = 1.4;
 const DOOR_SWING = 1.7;
+const divePose = racer => racer.diveTimer > 0 ?
+  Math.sin(Math.PI * (1 - racer.diveTimer / DIVE_DURATION)) : 0;
+const spinPose = racer => racer.spinTimer > 0 ?
+  (SPIN_DURATION - racer.spinTimer) / SPIN_DURATION * Math.PI * 4 : 0;
 const RIVAL_COLORS = {
   "_defaultMat(Clone)": 0xd62828,
   "dark(Clone)": 0x641010,
@@ -472,8 +477,10 @@ export async function createWorld() {
       if (!racer) return;
       model.position.set(racer.x, trackGame ? trackY ?? 0 :
         Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
-      model.rotation.y = racer.yaw + CHICKEN_YAW_OFFSET;
-      model.rotation.z = racer.controls.forward && !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0;
+      model.position.y += divePose(racer) * 0.8;
+      model.rotation.set(-divePose(racer) * 0.75,
+        racer.yaw + CHICKEN_YAW_OFFSET + spinPose(racer),
+        racer.controls.forward && !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0);
     });
     const activePillows = new Set(state.pillows.map(pillow => pillow.id));
     for (const [id, mesh] of pillowMeshes) {
@@ -497,8 +504,10 @@ export async function createWorld() {
 
     chicken.position.set(state.x, trackGame ? playerTrackY ?? 0 :
       Math.abs(Math.sin(state.walk)) * 0.12, state.z);
-    chicken.rotation.y = state.yaw + CHICKEN_YAW_OFFSET;
-    chicken.rotation.z = moving ? Math.sin(state.walk) * 0.06 : 0;
+    chicken.position.y += divePose(state) * 0.8;
+    chicken.rotation.set(-divePose(state) * 0.75,
+      state.yaw + CHICKEN_YAW_OFFSET + spinPose(state),
+      moving ? Math.sin(state.walk) * 0.06 : 0);
     const rivalMoving = ["track", "pillows", "doors"].includes(state.scene) &&
       dt > 0 && rival.controls.forward !== 0;
     rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
