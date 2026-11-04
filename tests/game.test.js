@@ -3,13 +3,53 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { collide, createGame as createRandomGame, moveTrackRacer } from "../js/lobby.js";
 import {
-  BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, LAPS_TO_WIN, LOBBY_BOUNDS,
+  BUTTON, CELL, CHICKEN_SCALE, CHICKEN_WIDTH, FINISH_LANDING, LAPS_TO_WIN, LOBBY_BOUNDS,
   LOBBY_BUILDING_WIDTH, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH,
   LOBBY_COLS, LOBBY_MAP, LOBBY_ROWS, LOBBY_SPAWN, MAP, PAINTINGS, R, RIVAL_SPEED,
   SPEED, START, TURN, checkpoints, cols, lobbyEntrances, lobbyStructures,
   TRACK_SURFACE_Y, TRACK_CHECKPOINT_RADIUS, isTrackSupported, lobbyWalls, rows, trackWalls,
   touchesFinishLanding,
 } from "../js/track.js";
+
+test("touching the model's red tile under the finish arch wins the local race", () => {
+  for (const winner of ["player", "rival"]) {
+    const game = createGame();
+    startRace(game);
+    Object.assign(winner === "player" ? game.state : game.rival, {
+      x: 145.3, z: 28,
+    });
+    game.update(0);
+    assert.equal(game.state.scene, "finished");
+    assert.equal(game.state.playerWon, winner === "player");
+  }
+});
+
+test("the final checkpoint alone does not win before touching the red tile", () => {
+  for (const racerName of ["state", "rival"]) {
+    const game = createGame();
+    startRace(game);
+    Object.assign(game[racerName], checkpoints.at(-1), {
+      nextCheckpoint: checkpoints.length - 1,
+    });
+    game.update(0);
+    assert.equal(game.state.scene, "track");
+    assert.equal(game[racerName].laps, 0);
+  }
+});
+
+test("movement stops on first finish contact instead of falling past the tile", () => {
+  const game = createGame();
+  startRace(game);
+  Object.assign(game.state, { x: 144.7, z: 28, yaw: Math.PI / 2 });
+  game.update(0.2, 0.2, { w: true });
+  assert.equal(game.state.scene, "finished");
+  assert.equal(game.state.playerWon, true);
+  assert.equal(game.state.eliminated, false);
+});
+
+const finishContact = {
+  x: FINISH_LANDING.x - FINISH_LANDING.halfWidth - 0.2, z: FINISH_LANDING.z,
+};
 
 function createGame(seed = 1) {
   return createRandomGame({
@@ -299,7 +339,7 @@ test("the lobby building is not collidable", () => {
 
 test("Laness sits to the player's right on a connected road branch", () => {
   const laness = lobbyStructures.find(({ type }) => type === "laness");
-  assert.equal(laness.asset, "../assets/models/laness.glb");
+  assert.equal(laness.asset, "../assets/models/online-structure.glb");
   assert.equal(laness.rotation, 0);
   assert.ok(laness.z - laness.depth / 2 > LOBBY_SPAWN.z);
   const visited = new Set(["0,3"]);
@@ -381,7 +421,7 @@ test("the course starts under the arch and finishes on the opposite side", () =>
   assert.equal(game.state.x, START.x - 1.6);
   assert.equal(game.state.yaw, Math.PI / 2);
   for (let n = 1; n < checkpoints.length; n++) {
-    Object.assign(game.state, checkpoints[n]);
+    Object.assign(game.state, n === checkpoints.length - 1 ? finishContact : checkpoints[n]);
     game.update(0);
     if (n < checkpoints.length - 1) {
       assert.equal(game.state.scene, "track");
@@ -399,7 +439,7 @@ test("touching the red landing at the far-side finish lets either racer win", ()
     startRace(game);
     assert.equal(touchesFinishLanding(game.state), false);
     assert.equal(touchesFinishLanding(game.rival), false);
-    Object.assign(winner === "player" ? game.state : game.rival, checkpoints.at(-1));
+    Object.assign(winner === "player" ? game.state : game.rival, finishContact);
     game.update(0);
     assert.equal(game.state.scene, "finished");
     assert.equal(game.state.playerWon, winner === "player");
@@ -409,8 +449,8 @@ test("touching the red landing at the far-side finish lets either racer win", ()
 test("simultaneous contact with the red landing is a draw", () => {
   const game = createGame();
   startRace(game);
-  Object.assign(game.state, checkpoints.at(-1));
-  Object.assign(game.rival, checkpoints.at(-1));
+  Object.assign(game.state, finishContact, { nextCheckpoint: checkpoints.length - 1 });
+  Object.assign(game.rival, finishContact, { nextCheckpoint: checkpoints.length - 1 });
   game.update(0);
   assert.equal(game.state.scene, "finished");
   assert.equal(game.state.playerWon, null);
@@ -420,7 +460,7 @@ test("player victory freezes racers and reset clears the result", () => {
   const game = createGame();
   startRace(game);
   Object.assign(game.state, {
-    ...checkpoints.at(-1), nextCheckpoint: checkpoints.length - 1,
+    ...finishContact, nextCheckpoint: checkpoints.length - 1,
   });
   game.update(0);
   assert.equal(game.state.scene, "finished");

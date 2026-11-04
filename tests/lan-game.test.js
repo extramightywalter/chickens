@@ -7,8 +7,12 @@ import {
   DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_XS, FINISH_Z, GATE_HALF_DEPTH,
 } from "../js/doors.js";
 import {
-  LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints, isTrackSupported, lobbyStructures,
+  FINISH_LANDING, LAN_BUTTON, LAPS_TO_WIN, R, SPEED, START, checkpoints, isTrackSupported, lobbyStructures,
 } from "../js/track.js";
+
+const finishContact = {
+  x: FINISH_LANDING.x - FINISH_LANDING.halfWidth - 0.2, z: FINISH_LANDING.z,
+};
 
 function round(minigame, count = 8) {
   return createLanGame(minigame, Array.from({ length: count }, (_, n) => `player-${n}`), () => 0.1);
@@ -94,7 +98,7 @@ test("any of eight human racers can win the race with a real finish-line crossin
     game.update(3);
     const racer = game.racers[winner];
     Object.assign(racer, {
-      ...checkpoints.at(-1), laps: 0, nextCheckpoint: checkpoints.length - 1,
+      ...finishContact, laps: 0, nextCheckpoint: checkpoints.length - 1,
     });
     game.update(0.05);
     assert.equal(game.state.scene, "finished");
@@ -109,7 +113,7 @@ test("the red landing finish works in LAN races like the red-button race", () =>
   for (let winner = 0; winner < 8; winner++) {
     const game = round("track");
     game.update(3);
-    Object.assign(game.racers[winner], checkpoints.at(-1));
+    Object.assign(game.racers[winner], finishContact);
     game.update(0.05);
     assert.equal(game.state.scene, "finished");
     assert.deepEqual(game.state.winnerIds, [game.racers[winner].id]);

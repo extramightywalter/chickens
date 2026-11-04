@@ -83,7 +83,9 @@ export const ROUTE = findTrackRoute();
 export const checkpoints = ROUTE;
 export const START = checkpoints[0];
 export const FINISH_LANDING = {
-  x: checkpoints.at(-1).x, z: checkpoints.at(-1).z, halfWidth: 0.8, halfDepth: 1.1,
+  x: TRACK_WORLD_X_ORIGIN + 18.799999237060547 * TRACK_TILE_SIZE,
+  z: TRACK_WORLD_Z_ORIGIN - 0.5349999666213989 * TRACK_TILE_SIZE,
+  halfWidth: 2.5, halfDepth: 9.975,
 };
 
 export function touchesFinishLanding(racer) {
@@ -144,7 +146,8 @@ const LOBBY_STRUCTURE_TYPES = {
     scaleMultiplier: 3, offsetX: 4, entranceWidth: 3.42, entranceOffsetX: -0.71,
   },
   l: {
-    type: "laness", asset: "../assets/models/laness.glb", width: 5.27735233, depth: 5.55238318,
+    type: "laness", asset: "../assets/models/online-structure.glb",
+    width: 7.52576399, depth: 11.35939954,
     entranceRotation: -Math.PI,
   },
 };
@@ -162,7 +165,8 @@ export const lobbyStructures = LOBBY_MAP.flatMap((line, row) =>
     const structure = LOBBY_STRUCTURE_TYPES[key];
     if (!structure) return [];
     const position = lobbyCellPosition(column, row);
-    const scale = LOBBY_BUILDING_WIDTH / structure.width * (structure.scaleMultiplier ?? 1);
+    const scale = structure.modelScale ??
+      LOBBY_BUILDING_WIDTH / structure.width * (structure.scaleMultiplier ?? 1);
     const side = key === "x" ? (row < 3 ? "south" : "north") :
       key === "y" ? "west" : key === "l" ? "north" : "south";
     const modelWidth = structure.width * scale, modelDepth = structure.depth * scale;

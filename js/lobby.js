@@ -1,5 +1,5 @@
 import {
-  BUTTON, LAN_BUTTON, LAPS_TO_WIN, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
+  BUTTON, FINISH_LANDING, LAN_BUTTON, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
   TRACK_CHECKPOINT_RADIUS, checkpoints, isTrackSupported, lobbyWalls, touchesFinishLanding,
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
@@ -38,6 +38,7 @@ export function moveRacer(racer, dt, forward, turn, speed, walls) {
 
 export function moveTrackRacer(racer, dt, forward, turn, speed) {
   racer.yaw += turn * TURN * dt;
+  if (touchesFinishLanding(racer)) return true;
   if (!forward || dt === 0) return isTrackSupported(racer.x, racer.z);
   const distance = forward * speed * dt;
   const steps = Math.ceil(Math.abs(distance) / 0.2);
@@ -45,18 +46,20 @@ export function moveTrackRacer(racer, dt, forward, turn, speed) {
   for (let index = 0; index < steps; index++) {
     racer.x += Math.sin(racer.yaw) * step;
     racer.z += Math.cos(racer.yaw) * step;
+    if (touchesFinishLanding(racer)) return true;
     if (!isTrackSupported(racer.x, racer.z)) return false;
   }
   return true;
 }
 
 export function updateTrackProgress(racer, radius = TRACK_CHECKPOINT_RADIUS) {
-  const point = checkpoints[racer.nextCheckpoint];
-  if (Math.hypot(racer.x - point.x, racer.z - point.z) > radius) return false;
   if (racer.nextCheckpoint === checkpoints.length - 1) {
+    if (!touchesFinishLanding(racer)) return false;
     racer.laps++;
     return true;
   }
+  const point = checkpoints[racer.nextCheckpoint];
+  if (Math.hypot(racer.x - point.x, racer.z - point.z) > radius) return false;
   racer.nextCheckpoint++;
   return false;
 }
@@ -141,7 +144,8 @@ export function createGame({ random = Math.random } = {}) {
 
   function chooseRivalControls() {
     rival.target = rival.nextCheckpoint;
-    const target = checkpoints[rival.nextCheckpoint];
+    const target = rival.nextCheckpoint === checkpoints.length - 1 ?
+      FINISH_LANDING : checkpoints[rival.nextCheckpoint];
     const desiredYaw = Math.atan2(target.x - rival.x, target.z - rival.z);
     const error = Math.atan2(Math.sin(desiredYaw - rival.yaw), Math.cos(desiredYaw - rival.yaw));
     driver.reaction += 0.1 + random() * 0.06;
@@ -158,8 +162,7 @@ export function createGame({ random = Math.random } = {}) {
       finishRace(true);
       return;
     }
-    if (updateTrackProgress(rival, TRACK_CHECKPOINT_RADIUS + 1.5) &&
-      rival.laps >= LAPS_TO_WIN) finishRace(false);
+    updateTrackProgress(rival, TRACK_CHECKPOINT_RADIUS + 1.5);
     if (rival.controls.forward) rival.walk += dt * 11;
   }
 
@@ -193,8 +196,8 @@ export function createGame({ random = Math.random } = {}) {
         if (!moveTrackRacer(state, dt, fwd, turn, SPEED)) {
           state.eliminated = true;
           finishRace(false);
-        } else if (updateTrackProgress(state) && state.laps >= LAPS_TO_WIN) {
-          finishRace(true);
+        } else {
+          updateTrackProgress(state);
         }
         if (state.scene === "track") moveRival(dt);
       } else {
