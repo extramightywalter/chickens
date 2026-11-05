@@ -25,11 +25,12 @@ Press **Space** to dive forward in those games and Egg Heist. Spin and dive each
 three-second cooldown.
 
 - **Maze Race:** Race the red rival, or 2-8 human players over LAN, through a
-  freshly generated, tightly packed 16-by-16 maze every round. Each layout has
+  freshly generated, tightly packed 14-by-14 maze every round. Each layout has
   48 extra connecting passages, creating loops and alternative routes for
   reaching the exit or avoiding monsters. All racers start
-  in the same blue chamber and race to the green **EXIT** in the farthest chamber.
-  The maze has twice Egg Heist's playable floor area (about 61 by 61 units), with
+  in the same blue chamber and race to the green **EXIT** near the far end.
+  The maze has one-and-a-half times Egg Heist's playable floor area (about 53 by
+  53 units), with
   narrow corridors and tall walls. The camera stays behind your chicken and
   moves closer when a wall is behind you, so it cannot peek through walls.
   Each maze has 2-4 wandering monsters. They only spot chickens within a
@@ -38,8 +39,12 @@ three-second cooldown.
   its last seen location before resuming their patrol, not its hidden position.
   The small arrow in front of each monster shows its facing direction and turns
   red while it searches or chases. Getting caught sends you back to the start;
-  the first three chambers are safe from capture. The first chicken to reach
-  the exit wins. W/S move and A/D turn; there is no spin or dive in this mode.
+  the first three chambers are safe from capture. Five catches eliminate a
+  racer. The first chicken to reach the exit wins. W/S move and A/D turn; there
+  is no spin or dive in this mode.
+  The solo rival does not know the exit location: it chooses unexplored passages
+  at each chamber and backtracks at dead ends, discovering the finish by exploring.
+  Being caught clears its exploration memory along with returning it to the start.
 - **Egg Battle:** Fight the red rival, or 2-8 human players over LAN, in a
   36-by-36 arena (twice Pillow Dodge's width and length). The camera stays
   directly behind your chicken. Twenty-five eggs are scattered across the map.

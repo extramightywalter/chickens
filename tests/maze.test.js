@@ -28,23 +28,24 @@ function monsterAt(position, yaw = 0) {
   return { id: 0, ...position, yaw, walk: 0, waypoint: null, targetId: null, lastSeen: null };
 }
 
-test("maze floor is exactly twice Egg Heist's area with tightly packed corridors", () => {
-  assert.ok(Math.abs(MAZE_SIZE ** 2 / (EGG_LIMIT * 2) ** 2 - 2) < 1e-12);
-  assert.equal(MAZE_COLS, 16);
+test("maze floor is one-and-a-half times Egg Heist's area with tightly packed corridors", () => {
+  assert.ok(Math.abs(MAZE_SIZE ** 2 / (EGG_LIMIT * 2) ** 2 - 1.5) < 1e-12);
+  assert.equal(MAZE_COLS, 14);
   assert.ok(MAZE_CELL - MAZE_WALL_THICKNESS > R * 2);
   assert.ok(MAZE_CELL - MAZE_WALL_THICKNESS < R * 6);
 });
 
-test("new layouts are connected, bounded, and put the exit in a farthest chamber", () => {
+test("new layouts are connected, bounded, and put the exit near the far end", () => {
   const keys = new Set();
   for (let seed = 1; seed <= 20; seed++) {
     const maze = generateMaze(randomSeed(seed));
     keys.add(maze.key);
-    const distance = mazePath(maze, maze.start, maze.exit).length;
-    assert.ok(distance > MAZE_COLS);
+    const distances = maze.links.map((_, cell) => mazePath(maze, maze.start, cell).length - 1);
+    const farthest = Math.max(...distances);
+    const distance = distances[maze.exit];
+    assert.ok(distance >= Math.ceil(farthest * 0.8));
+    assert.ok(distance < farthest);
     for (let cell = 0; cell < maze.links.length; cell++) {
-      const path = mazePath(maze, 0, cell);
-      assert.ok(path.length <= distance);
       assert.equal(mazeCellAt(mazePosition(cell)), cell);
       for (const next of maze.links[cell]) {
         assert.ok(maze.links[next].includes(cell));
@@ -184,6 +185,39 @@ test("capture resets the chicken to the safe start, without winning the race", (
   assert.deepEqual(racers[0], safe);
 });
 
+test("five captures eliminate a racer and finish solo and LAN races", () => {
+  const solo = createGame({ random: randomSeed() });
+  solo.enterMaze();
+  solo.update(3);
+  const soloRacer = solo.state;
+  const soloCell = mazePath(solo.state.maze, 0, solo.state.maze.exit)[10];
+  const soloPosition = mazePosition(soloCell);
+  for (let count = 1; count <= 5; count++) {
+    Object.assign(soloRacer, soloPosition);
+    solo.state.mazeMonsters = [monsterAt(soloPosition)];
+    solo.update(0.02);
+    assert.equal(soloRacer.mazeRestarts, count);
+    assert.equal(soloRacer.eliminated, count === 5);
+  }
+  assert.equal(solo.state.scene, "finished");
+  assert.equal(solo.state.playerWon, false);
+
+  const lan = createLanGame("maze", ["one", "two"], randomSeed());
+  lan.update(3);
+  const racer = lan.racers[0];
+  const cell = mazePath(lan.state.maze, 0, lan.state.maze.exit)[10];
+  const position = mazePosition(cell);
+  for (let count = 1; count <= 5; count++) {
+    Object.assign(racer, position);
+    lan.state.mazeMonsters = [monsterAt(position)];
+    lan.update(0.02);
+    assert.equal(racer.mazeRestarts, count);
+    assert.equal(racer.eliminated, count === 5);
+  }
+  assert.equal(lan.state.scene, "finished");
+  assert.deepEqual(lan.state.winnerIds, ["two"]);
+});
+
 test("monsters patrol through doorways rather than crossing walls", () => {
   const { round, state } = setup();
   for (let tick = 0; tick < 600; tick++) {
@@ -262,13 +296,73 @@ test("same-tick arrivals award only the earliest exit contact, not array order",
   assert.deepEqual(winners, [racers[1]]);
 });
 
-test("the solo rival solves multiple generated mazes using normal movement and speed", () => {
+test("rival explores local passages and backtracks instead of knowing the exit", () => {
+  for (const exit of [1, 16, 17]) {
+    const round = createMazeRound(() => 0);
+    const state = { maze: { links: [[1, 16], [0]], exit } };
+    state.maze.links[16] = [0, 17];
+    state.maze.links[17] = [16];
+    Object.defineProperty(state.maze, "exit", {
+      get() { assert.fail("Exploration must not read the exit location"); },
+    });
+    const racer = { ...mazePosition(0), yaw: 0, mazeWaypoint: null };
+    for (const expected of [1, 0, 16, 17, 16, 0]) {
+      round.chooseControls(state, racer);
+      assert.equal(racer.mazeWaypoint, expected);
+      Object.assign(racer, mazePosition(expected), { mazeWaypoint: null });
+    }
+  }
+});
+
+test("rival exploration covers every chamber in looping mazes without a known destination", () => {
+  for (const seed of [1, 3, 5]) {
+    const { round, state, racers } = setup(seed);
+    const racer = racers[1];
+    Object.assign(racer, mazePosition(state.maze.start));
+    const visited = new Set([state.maze.start]);
+    Object.defineProperty(state.maze, "exit", {
+      get() { assert.fail("Exploration must not read the exit location"); },
+    });
+    for (let step = 0; step < state.maze.links.length * 2 &&
+        visited.size < state.maze.links.length; step++) {
+      const cell = mazeCellAt(racer);
+      round.chooseControls(state, racer);
+      const next = racer.mazeWaypoint;
+      assert.ok(next === cell || state.maze.links[cell].includes(next));
+      visited.add(next);
+      Object.assign(racer, mazePosition(next), { mazeWaypoint: null });
+    }
+    assert.equal(visited.size, state.maze.links.length);
+  }
+});
+
+test("capture and new rounds clear the rival's exploration memory", () => {
+  const round = createMazeRound(() => 0), state = {}, racer = {};
+  round.reset(state, [racer]);
+  function exploreStart() {
+    Object.assign(racer, mazePosition(state.maze.start), { mazeWaypoint: null });
+    round.chooseControls(state, racer);
+    assert.equal(racer.mazeWaypoint, state.maze.links[state.maze.start][0]);
+  }
+  exploreStart();
+  const cell = mazePath(state.maze, state.maze.start, state.maze.exit)[10];
+  const center = mazePosition(cell);
+  Object.assign(racer, center);
+  state.mazeMonsters = [monsterAt({ x: center.x, z: center.z - 0.5 })];
+  round.advance(state, [racer], 0.02, () => {});
+  assert.equal(mazeCellAt(racer), state.maze.start);
+  exploreStart();
+  round.reset(state, [racer]);
+  exploreStart();
+});
+
+test("the solo rival eventually discovers the exit using normal movement and speed", () => {
   for (const seed of [1, 3, 5]) {
     const game = createGame({ random: randomSeed(seed) });
     game.enterMaze();
     game.update(0.05, 3);
     game.state.mazeMonsters = [];
-    for (let tick = 0; tick < 6000 && game.state.scene === "maze"; tick++) game.update(0.05);
+    for (let tick = 0; tick < 30000 && game.state.scene === "maze"; tick++) game.update(0.05);
     assert.equal(game.state.scene, "finished");
     assert.equal(game.state.playerWon, false);
   }

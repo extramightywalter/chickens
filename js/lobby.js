@@ -256,7 +256,7 @@ export function createGame({ random = Math.random } = {}) {
         moveRacer(racer, step, racer.controls.forward, racer.controls.turn, SPEED, state.maze.walls);
         racer.walk = racer.controls.forward ? racer.walk + step * 11 : 0;
       });
-      if (winners) finishRace(winners[0] === state);
+      if (winners) finishRace(winners.length === 0 ? null : winners[0] === state);
       return { moving: forward !== 0, dt };
     }
     if (["eggs", "egg-battle"].includes(state.minigame) && state.scene === "finished") return { moving: false, dt: 0 };

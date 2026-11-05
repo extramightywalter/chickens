@@ -1,8 +1,8 @@
 import { EGG_LIMIT } from "./eggs.js";
 import { R, SPEED, TURN } from "./track.js";
 
-export const MAZE_SIZE = EGG_LIMIT * 2 * Math.SQRT2;
-export const MAZE_COLS = 16;
+export const MAZE_SIZE = EGG_LIMIT * 2 * Math.sqrt(1.5);
+export const MAZE_COLS = 14;
 export const MAZE_CELL = MAZE_SIZE / MAZE_COLS;
 export const MAZE_WALL_THICKNESS = 0.3;
 export const MAZE_WALL_HEIGHT = 4.8;
@@ -80,17 +80,21 @@ export function generateMaze(random = Math.random) {
     links[next].push(cell);
   }
   const maze = { links, walls: [], start: 0, exit: 0 };
-  // The farthest cell makes every layout a substantial race rather than a nearby exit.
-  const queue = [0], seen = new Set(queue);
+  const queue = [0], distances = new Map([[0, 0]]);
   for (let index = 0; index < queue.length; index++) {
     const cell = queue[index];
-    maze.exit = cell;
     for (const next of links[cell]) {
-      if (seen.has(next)) continue;
-      seen.add(next);
+      if (distances.has(next)) continue;
+      distances.set(next, distances.get(cell) + 1);
       queue.push(next);
     }
   }
+  const farthest = Math.max(...distances.values());
+  const exitCandidates = [...distances]
+    .filter(([cell, distance]) => cell !== maze.start &&
+      distance >= Math.ceil(farthest * 0.8) && distance < farthest)
+    .map(([cell]) => cell);
+  maze.exit = exitCandidates[Math.floor(random() * exitCandidates.length)] ?? queue.at(-1);
   const half = MAZE_WALL_THICKNESS / 2, limit = MAZE_SIZE / 2;
   for (let row = 0; row <= MAZE_COLS; row++) {
     for (let col = 0; col < MAZE_COLS; col++) {
@@ -156,9 +160,16 @@ function spawnRacer(maze, racer, index) {
 }
 
 export function createMazeRound(random = Math.random) {
+  let exploration = new WeakMap();
+
   function reset(state, racers) {
+    exploration = new WeakMap();
     state.maze = generateMaze(random);
-    racers.forEach((racer, index) => spawnRacer(state.maze, racer, index));
+    racers.forEach((racer, index) => {
+      racer.mazeRestarts = 0;
+      racer.eliminated = false;
+      spawnRacer(state.maze, racer, index);
+    });
     const candidates = Array.from({ length: count }, (_, cell) => cell)
       .filter(cell => mazePath(state.maze, 0, cell).length > 8 && cell !== state.maze.exit);
     const monsterCount = 2 + Math.floor(random() * 3);
@@ -176,8 +187,25 @@ export function createMazeRound(random = Math.random) {
     const cell = mazeCellAt(racer);
     if (racer.mazeWaypoint === null) {
       const center = mazePosition(cell);
-      racer.mazeWaypoint = Math.hypot(center.x - racer.x, center.z - racer.z) > 0.3 ?
-        cell : (mazePath(state.maze, cell, state.maze.exit)[1] ?? cell);
+      if (Math.hypot(center.x - racer.x, center.z - racer.z) > 0.3) {
+        racer.mazeWaypoint = cell;
+      } else {
+        let memory = exploration.get(racer);
+        if (!memory) {
+          memory = { visited: new Set([cell]), trail: [cell] };
+          exploration.set(racer, memory);
+        }
+        const choices = state.maze.links[cell].filter(next => !memory.visited.has(next));
+        if (choices.length) {
+          const next = choices[Math.floor(random() * choices.length)];
+          memory.visited.add(next);
+          memory.trail.push(next);
+          racer.mazeWaypoint = next;
+        } else {
+          if (memory.trail.length > 1) memory.trail.pop();
+          racer.mazeWaypoint = memory.trail.at(-1);
+        }
+      }
     }
     const target = mazePosition(racer.mazeWaypoint);
     if (Math.hypot(target.x - racer.x, target.z - racer.z) < 0.25) racer.mazeWaypoint = null;
@@ -191,7 +219,7 @@ export function createMazeRound(random = Math.random) {
 
   function updateMonsters(state, racers, dt) {
     for (const monster of state.mazeMonsters) {
-      const visible = racers.filter(racer => mazeCanSee(state.maze, monster, racer))
+      const visible = racers.filter(racer => !racer.eliminated && mazeCanSee(state.maze, monster, racer))
         .sort((a, b) => Math.hypot(a.x - monster.x, a.z - monster.z) -
           Math.hypot(b.x - monster.x, b.z - monster.z));
       monster.targetId = visible[0]?.id ?? null;
@@ -226,11 +254,16 @@ export function createMazeRound(random = Math.random) {
       }
       if (distance <= step + 1e-8) monster.waypoint = null;
       for (const [index, racer] of racers.entries()) {
+        if (racer.eliminated) continue;
         // The start chamber is a safe reset point, not a place for monsters to camp.
         if (mazePath(state.maze, 0, mazeCellAt(racer)).length <= 3) continue;
         if (Math.hypot(racer.x - monster.x, racer.z - monster.z) < R * 2 &&
             mazeClearFraction(state.maze.walls, monster, racer) === 1) {
-          spawnRacer(state.maze, racer, index);
+          racer.mazeRestarts++;
+          racer.eliminated = racer.mazeRestarts >= 5;
+          if (!racer.eliminated) spawnRacer(state.maze, racer, index);
+          else racer.controls = { forward: 0, turn: 0 };
+          exploration.delete(racer);
           monster.targetId = null;
           monster.lastSeen = null;
         }
@@ -244,6 +277,7 @@ export function createMazeRound(random = Math.random) {
     for (let n = 0; n < steps; n++) {
       const arrivals = [];
       for (const racer of racers) {
+        if (racer.eliminated) continue;
         const before = { x: racer.x, z: racer.z };
         move(racer, step);
         const dx = racer.x - before.x, dz = racer.z - before.z;
@@ -260,6 +294,8 @@ export function createMazeRound(random = Math.random) {
         return [arrivals[0].racer];
       }
       if (step > 0) updateMonsters(state, racers, step);
+      const survivors = racers.filter(racer => !racer.eliminated);
+      if (racers.length && survivors.length <= 1) return survivors;
     }
     return null;
   }
