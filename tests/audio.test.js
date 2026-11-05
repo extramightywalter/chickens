@@ -79,7 +79,7 @@ test("pillow, door, and egg rounds use the same start and chicken sounds", () =>
   const previousWindow = globalThis.window;
   globalThis.window = { AudioContext: FakeAudioContext };
   try {
-    for (const minigame of ["pillows", "doors", "eggs", "egg-battle"]) {
+    for (const minigame of ["pillows", "doors", "eggs", "egg-battle", "maze"]) {
       const sounds = createSoundEffects();
       sounds.startRace();
       const context = FakeAudioContext.instance;

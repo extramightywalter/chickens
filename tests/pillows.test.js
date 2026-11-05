@@ -24,21 +24,20 @@ test("the button selection gives each minigame an equal random interval", () => 
   let choice = 0;
   const game = createGame({ random: () => choice });
   const counts = Object.fromEntries(MINIGAMES.map(name => [name, 0]));
-  for (let n = 0; n < 1000; n++) {
-    choice = n / 1000;
+  const samples = MINIGAMES.length * 100;
+  for (let n = 0; n < samples; n++) {
+    choice = n / samples;
     const selected = game.enterMinigame();
     counts[selected]++;
     assert.equal(game.state.minigame, selected);
     assert.equal(game.state.scene, "countdown");
   }
-  assert.deepEqual(counts, { track: 200, pillows: 200, doors: 200, eggs: 200, "egg-battle": 200 });
-  for (const [value, expected] of [
-    [0, "track"], [0.199999, "track"], [0.2, "pillows"], [0.399999, "pillows"],
-    [0.4, "doors"], [0.599999, "doors"], [0.6, "eggs"], [0.799999, "eggs"],
-    [0.8, "egg-battle"], [0.999999, "egg-battle"],
-  ]) {
-    choice = value;
-    assert.equal(game.enterMinigame(), expected);
+  assert.deepEqual(counts, Object.fromEntries(MINIGAMES.map(name => [name, 100])));
+  for (const [index, expected] of MINIGAMES.entries()) {
+    for (const choiceValue of [index / MINIGAMES.length, (index + 1) / MINIGAMES.length - 1e-6]) {
+      choice = choiceValue;
+      assert.equal(game.enterMinigame(), expected);
+    }
   }
 });
 

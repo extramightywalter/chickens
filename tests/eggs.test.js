@@ -271,6 +271,31 @@ test("walking into another chicken does not stun them", () => {
   assert.equal(target.stunTimer, 0);
 });
 
+test("online dashes stun chickens already touching when either player starts the dash", () => {
+  for (const attackerIndex of [0, 1]) {
+    const game = lan();
+    game.update(3);
+    const attacker = game.racers[attackerIndex];
+    const target = game.racers[1 - attackerIndex];
+    Object.assign(attacker, { x: 0, z: 0, yaw: 0 });
+    Object.assign(target, { x: 0, z: R });
+
+    game.update(0.05, new Map([[attacker.id, { " ": true }]]));
+    assert.equal(target.stunTimer, EGG_STUN_DURATION);
+    assert.equal(attacker.stunTimer, 0);
+
+    const before = { x: target.x, z: target.z, yaw: target.yaw };
+    for (let tick = 0; tick < 29; tick++) {
+      game.update(0.05, new Map([[target.id, { w: true, a: true, e: true, " ": true }]]));
+      assert.deepEqual({ x: target.x, z: target.z, yaw: target.yaw }, before);
+      assert.equal(target.diveTimer, 0);
+      assert.equal(target.carryingEggId, null);
+    }
+    game.update(0.05);
+    assert.equal(target.stunTimer, 0, "contact must not refresh the original stun");
+  }
+});
+
 test("solo egg heist dashes can stun the rival", () => {
   const game = createGame();
   game.enterEggs();

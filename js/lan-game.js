@@ -9,6 +9,7 @@ import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
 import { createEggRound, eggWalls } from "./eggs.js";
 import { battleWalls, createEggBattleRound } from "./egg-battle.js";
+import { createMazeRound } from "./maze.js";
 
 export function createLanGame(minigame, playerIds, random = Math.random) {
   const game = createGame({ random });
@@ -17,6 +18,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   else if (minigame === "doors") game.enterDoors();
   else if (minigame === "eggs") game.enterEggs();
   else if (minigame === "egg-battle") game.enterEggBattle();
+  else if (minigame === "maze") game.enterMaze();
   else throw new Error("Unknown minigame");
   if (playerIds.length < 2 || playerIds.length > 8 || new Set(playerIds).size !== playerIds.length) {
     throw new Error("LAN games require 2-8 distinct players");
@@ -28,6 +30,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   const doorRound = createDoorRound(random);
   const eggRound = createEggRound();
   const battleRound = createEggBattleRound();
+  const mazeRound = createMazeRound(random);
   const previousActionKeys = new Map();
   if (minigame === "pillows") pillowRound.reset(state, game.rival);
   if (minigame === "doors") doorRound.reset(state, game.rival);
@@ -50,6 +53,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   });
   if (minigame === "eggs") eggRound.reset(state, racers);
   if (minigame === "egg-battle") battleRound.reset(state, racers);
+  if (minigame === "maze") mazeRound.reset(state, racers);
   for (const racer of racers) previousActionKeys.set(racer.id, { e: false, space: false });
 
   function finish(winners) {
@@ -75,6 +79,18 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       return;
     }
     state.goTimer = Math.max(0, state.goTimer - dt);
+    if (minigame === "maze") {
+      const winners = mazeRound.advance(state, racers, dt, (racer, step) => {
+        const keys = inputs.get(racer.id) ?? {};
+        const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
+        const turn = Number(Boolean(keys.a || keys.arrowleft)) - Number(Boolean(keys.d || keys.arrowright));
+        racer.controls = { forward, turn };
+        moveRacer(racer, step, forward, turn, SPEED, state.maze.walls);
+        racer.walk = forward ? racer.walk + step * 11 : 0;
+      });
+      if (winners) finish(winners);
+      return;
+    }
     if (minigame === "eggs") dt = Math.min(dt, state.eggTimeLeft);
     const stunnedRacers = minigame === "eggs" ?
       new Set(racers.filter(racer => racer.stunTimer > 0)) : new Set();

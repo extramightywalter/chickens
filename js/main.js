@@ -65,6 +65,7 @@ function startMinigame(selection) {
   else if (selection === "doors") game.enterDoors();
   else if (selection === "eggs") game.enterEggs();
   else if (selection === "egg-battle") game.enterEggBattle();
+  else if (selection === "maze") game.enterMaze();
   else game.enterPillows();
   closeMenu();
   input.clear();
@@ -132,7 +133,8 @@ function raceProgress(racer) {
 function updateUI() {
   const controlsHelp = state.minigame === "egg-battle" ?
     " | E pick up egg | Space throw egg / jump when empty-handed" : state.minigame === "eggs" ?
-    " | E pick up / steal / drop egg | Space dash (stuns on contact)" : abilityHelp;
+    " | E pick up / steal / drop egg | Space dash (stuns on contact)" :
+    state.minigame === "maze" ? " | Find the green EXIT | Avoid monsters' sight | Caught = back to start" : abilityHelp;
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
       game.nearLanButton() ? "Press E to host or join a LAN game" :
@@ -145,8 +147,11 @@ function updateUI() {
           ["pillows", "egg-battle"].includes(state.minigame) ? `${racer.lives}/3 HP` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
           state.minigame === "eggs" ? `${racer.eggScore} eggs` :
+          state.minigame === "maze" ? "racing" :
             raceProgress(racer)}${racer.stunTimer > 0 ? " (stunned)" : ""}`).join(" | ")
       }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+    : state.minigame === "maze"
+      ? `MAZE RACE | First to the green exit wins | ${state.mazeMonsters.length} roaming monsters | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "egg-battle"
       ? `EGG BATTLE | You: ${state.lives}/3 HP | Rival: ${rival.lives}/3 HP | Last chicken standing wins${state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump"} | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "eggs"

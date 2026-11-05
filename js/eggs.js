@@ -96,7 +96,6 @@ export function createEggRound() {
         if (targetIndex === index || target.stunTimer > 0) continue;
         const startX = previous[index].x - previous[targetIndex].x;
         const startZ = previous[index].z - previous[targetIndex].z;
-        if (Math.hypot(startX, startZ) <= contactDistance) continue;
         const endX = attacker.x - target.x;
         const endZ = attacker.z - target.z;
         if (segmentDistance(startX, startZ, endX, endZ) <= contactDistance) {

@@ -3,6 +3,8 @@ import { once } from "node:events";
 import test from "node:test";
 import { createLanServer } from "../server.js";
 import { MINIGAMES } from "../js/pillows.js";
+import { EGG_STUN_DURATION } from "../js/eggs.js";
+import { R } from "../js/track.js";
 
 async function setup(t) {
   const server = createLanServer();
@@ -93,6 +95,31 @@ test("rooms advertise host occupancy, enforce settings, and start only when all 
   }
 });
 
+test("LAN maze rounds send all players the same layout with 48 alternate-route connections", async t => {
+  const base = await setup(t);
+  const clients = [];
+  for (let index = 0; index < 8; index++) clients.push(await connect(base));
+  const host = clients[0];
+  for (const slots of [2, 8]) {
+    assert.equal((await host.action("host", { slots, selection: "maze" })).status, 200);
+    const { room } = await host.next("rooms", data => data.room?.selection === "maze" &&
+      data.room.members.length === 1);
+    for (const client of clients.slice(1, slots)) {
+      assert.equal((await client.action("join", { roomId: room.id })).status, 200);
+    }
+    const rounds = await Promise.all(clients.slice(0, slots).map(client => client.next("round")));
+    const maze = rounds[0].state.maze;
+    const passages = maze.links.reduce((total, links) => total + links.length, 0) / 2;
+    assert.equal(passages - maze.links.length + 1, 48);
+    for (const round of rounds) {
+      assert.equal(round.state.minigame, "maze");
+      assert.equal(round.racers.length, slots);
+      assert.deepEqual(round.state.maze, maze);
+    }
+    assert.equal((await host.action("leave")).status, 200);
+  }
+});
+
 test("simultaneous join clicks never overfill a room or let someone join twice", async t => {
   const base = await setup(t);
   const host = await connect(base), first = await connect(base), second = await connect(base);
@@ -145,6 +172,57 @@ test("active players share authoritative human movement and disconnects end the 
   const notice = await host.next("notice");
   assert.match(notice.message, /ended/);
   await host.next("rooms", data => !data.room && data.games.length === 0);
+});
+
+test("online Egg Heist clients share close-contact dash stuns and recovery", async t => {
+  const base = await setup(t);
+  const host = await connect(base), guest = await connect(base);
+  await host.action("host", { slots: 2, selection: "eggs" });
+  const { room } = await host.next("rooms", data => data.room);
+  await guest.action("join", { roomId: room.id });
+  let round = await host.next("round", data => data.state.scene === "eggs");
+  const distance = data => Math.hypot(
+    data.racers[0].x - data.racers[1].x, data.racers[0].z - data.racers[1].z);
+
+  // Walk together before dashing: this used to bypass the server's hit check.
+  for (let tick = 0; distance(round) > R * 2 && tick < 100; tick++) {
+    await Promise.all([host, guest].map(client => client.action("input", { keys: { w: true } })));
+    round = await host.next("round");
+  }
+  assert.ok(distance(round) <= R * 2, "players must be touching before the dash");
+  await Promise.all([host, guest].map(client => client.action("input", { keys: {} })));
+  round = await host.next("round", data =>
+    data.racers.every(racer => racer.controls.forward === 0));
+  assert.ok(distance(round) <= R * 2);
+
+  await guest.action("input", { keys: { " ": true } });
+  const stunned = await host.next("round", data => data.racers[0].stunTimer > 0);
+  assert.equal(stunned.racers[0].stunTimer, EGG_STUN_DURATION);
+  assert.equal(stunned.racers[1].stunTimer, 0);
+  const guestView = await guest.next("round", data => data.racers[0].stunTimer > 0);
+  assert.deepEqual(guestView.racers, stunned.racers, "both clients see the same server hit");
+
+  const position = ({ x, z, yaw }) => ({ x, z, yaw });
+  const stopped = position(stunned.racers[0]);
+  const keys = { w: true, a: true, e: true, " ": true };
+  let recovered;
+  for (let tick = 0; tick < 40; tick++) {
+    await host.action("input", { keys });
+    const snapshot = await host.next("round");
+    const target = snapshot.racers[0];
+    if (target.stunTimer === 0 && target.controls.forward !== 0) {
+      recovered = snapshot;
+      break;
+    }
+    assert.deepEqual(position(target), stopped);
+    assert.equal(target.carryingEggId, null);
+    assert.equal(target.diveTimer, 0);
+    assert.deepEqual(target.controls, { forward: 0, turn: 0 });
+  }
+  assert.ok(recovered, "movement resumes after the stun");
+  const duration = stunned.state.eggTimeLeft - recovered.state.eggTimeLeft;
+  assert.ok(duration >= EGG_STUN_DURATION && duration < EGG_STUN_DURATION + 0.3);
+  assert.notDeepEqual(position(recovered.racers[0]), stopped);
 });
 
 test("LAN server serves game assets but not source-server files or hidden files", async t => {

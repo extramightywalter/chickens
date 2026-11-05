@@ -6,6 +6,7 @@ import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
 import { DOORS_START, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
 import { createEggRound, eggWalls } from "./eggs.js";
 import { battleWalls, createEggBattleRound } from "./egg-battle.js";
+import { createMazeRound } from "./maze.js";
 
 export const SPIN_DURATION = 2;
 export const DIVE_DURATION = 0.8;
@@ -97,6 +98,7 @@ export function createGame({ random = Math.random } = {}) {
   const doorRound = createDoorRound(random);
   const eggRound = createEggRound();
   const battleRound = createEggBattleRound();
+  const mazeRound = createMazeRound(random);
   let previousActionKeys = { e: false, space: false };
   let driver;
 
@@ -111,6 +113,7 @@ export function createGame({ random = Math.random } = {}) {
       eggs: [], eggPits: [], eggTimeLeft: 0, carryingEggId: null, eggScore: 0,
       stunTimer: 0,
       battleEggs: [], jumpHeight: 0, jumpVelocity: 0, throwCooldown: 0,
+      maze: null, mazeMonsters: [],
       multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
     });
     Object.assign(rival, {
@@ -164,6 +167,7 @@ export function createGame({ random = Math.random } = {}) {
     else if (selected === "pillows") enterPillows();
     else if (selected === "doors") enterDoors();
     else if (selected === "eggs") enterEggs();
+    else if (selected === "maze") enterMaze();
     else enterEggBattle();
     return selected;
   }
@@ -183,6 +187,15 @@ export function createGame({ random = Math.random } = {}) {
     state.id = "player";
     rival.id = "rival";
     battleRound.reset(state, [state, rival]);
+    state.countdown = 3;
+  }
+
+  function enterMaze() {
+    setScene("countdown", { x: 0, z: 0 }, 0);
+    state.minigame = "maze";
+    state.id = "player";
+    rival.id = "rival";
+    mazeRound.reset(state, [state, rival]);
     state.countdown = 3;
   }
 
@@ -224,6 +237,28 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   function update(dt, elapsed = dt, keys = {}) {
+    if (state.minigame === "maze") {
+      if (state.scene === "finished") return { moving: false, dt: 0 };
+      if (state.scene === "countdown") {
+        state.countdown = Math.max(0, state.countdown - elapsed);
+        if (state.countdown === 0) {
+          state.scene = "maze";
+          state.goTimer = 0.7;
+        }
+        return { moving: false, dt: 0 };
+      }
+      state.goTimer = Math.max(0, state.goTimer - elapsed);
+      const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
+      const turn = Number(Boolean(keys.a || keys.arrowleft)) - Number(Boolean(keys.d || keys.arrowright));
+      const winners = mazeRound.advance(state, [state, rival], dt, (racer, step) => {
+        if (racer === rival) mazeRound.chooseControls(state, racer);
+        else racer.controls = { forward, turn };
+        moveRacer(racer, step, racer.controls.forward, racer.controls.turn, SPEED, state.maze.walls);
+        racer.walk = racer.controls.forward ? racer.walk + step * 11 : 0;
+      });
+      if (winners) finishRace(winners[0] === state);
+      return { moving: forward !== 0, dt };
+    }
     if (["eggs", "egg-battle"].includes(state.minigame) && state.scene === "finished") return { moving: false, dt: 0 };
     let moving = false;
     const battle = state.minigame === "egg-battle";
@@ -322,7 +357,7 @@ export function createGame({ random = Math.random } = {}) {
 
   reset();
   return {
-    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterEggs, enterEggBattle, enterMinigame,
+    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterEggs, enterEggBattle, enterMaze, enterMinigame,
     reset, returnToButton, update,
   };
 }

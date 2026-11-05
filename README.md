@@ -17,13 +17,29 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-an equal one-in-five Race, Pillow Dodge, Door Dash, Egg Heist, or Egg Battle selection, or choose
+an equal one-in-six Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, or Maze Race selection, or choose
 **Choose minigame** to start any game directly.
 During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
 Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
 three-second cooldown.
 
+- **Maze Race:** Race the red rival, or 2-8 human players over LAN, through a
+  freshly generated, tightly packed 16-by-16 maze every round. Each layout has
+  48 extra connecting passages, creating loops and alternative routes for
+  reaching the exit or avoiding monsters. All racers start
+  in the same blue chamber and race to the green **EXIT** in the farthest chamber.
+  The maze has twice Egg Heist's playable floor area (about 61 by 61 units), with
+  narrow corridors and tall walls. The camera stays behind your chicken and
+  moves closer when a wall is behind you, so it cannot peek through walls.
+  Each maze has 2-4 wandering monsters. They only spot chickens within a
+  forward-facing 90-degree field of view, at up to 12 units, with walls blocking
+  their sight. A spotted chicken is chased; after losing sight, monsters search
+  its last seen location before resuming their patrol, not its hidden position.
+  The small arrow in front of each monster shows its facing direction and turns
+  red while it searches or chases. Getting caught sends you back to the start;
+  the first three chambers are safe from capture. The first chicken to reach
+  the exit wins. W/S move and A/D turn; there is no spin or dive in this mode.
 - **Egg Battle:** Fight the red rival, or 2-8 human players over LAN, in a
   36-by-36 arena (twice Pillow Dodge's width and length). The camera stays
   directly behind your chicken. Twenty-five eggs are scattered across the map.
@@ -49,7 +65,10 @@ three-second cooldown.
   carried egg. E takes the nearest egg within reach, whether carried or dropped;
   if you already have an egg, E drops it instead. Holding E does not steal repeatedly.
   Players can still steal dropped eggs from anyone's pit. Only eggs on the ground inside
-  your pit count, not eggs you are carrying. After **1 minute 30 seconds**, the highest
+  your pit count, not eggs you are carrying. Press **Space** to dash into another
+  chicken and stun it for **1.5 seconds**, including when already touching.
+  Stunned chickens cannot move, turn, dash, or interact with eggs.
+  This works in solo and LAN games. After **1 minute 30 seconds**, the highest
   score wins; equal scores tie. Pit assignments maximize the minimum distance
   between players. Solo play includes an egg-collecting, stealing rival.
 - **Pillow Dodge:** Survive longer than the rival in a small enclosed arena.
@@ -119,7 +138,7 @@ and create a new room. Served files are revalidated on refresh so clients get
 the current camera and rendering code.
 
 Walk into Laness and go to the **blue button on its right side**, then press
-**E**. Choose **Host a game**, select **Random** or any of the same five
+**E**. Choose **Host a game**, select **Random** or any of the same six
 minigames offered at the red button, and choose **2-8 slots**. The host fills
 the first slot. Other players choose **Play a game** and click a game in the
 live list to join. The shared three-second countdown starts automatically
@@ -137,6 +156,8 @@ Egg Heist supports all 2-8 players, with server-authoritative egg pickup,
 stealing, pit scores, and a 90-second timer. Tied high scorers share the win.
 Egg Battle synchronizes pickups, throws, jumps, HP, and eliminations on the server;
 eliminated players watch until the last chicken remains.
+Maze Race shares one server-generated layout and synchronizes monster patrols,
+sight, pursuits, and start resets. Only the first exit arrival wins.
 
 Leave a waiting room to free your slot; if the host leaves, the room closes.
 If anyone disconnects during a round, it ends for everyone with a notice.
@@ -156,6 +177,8 @@ red-button minigame selection remains unchanged.
   independent of the DOM and Three.js.
 - `js/pillows.js`: equal-chance minigame list, pillow arena, throws, hit detection,
   and rival dodge decisions; independent of the DOM and Three.js.
+- `js/maze.js`: procedural maze generation, pathfinding, monster vision and
+  pursuit, capture resets, and first-arrival race rules, shared by solo and LAN.
 - `js/doors.js`: Door Dash course, secret door assignments, rival door guessing,
   monster chase, and win rules; independent of the DOM and Three.js.
 - `js/eggs.js`: Egg Heist pit spacing, pickup/drop, stealing, scoring, timer,
