@@ -5,6 +5,7 @@ import { createWorld } from "./world.js";
 import { createSoundEffects } from "./audio.js";
 import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
 import { createLanMenu } from "./lan-menu.js";
+import { BLASTER_HP } from "./gun-arena.js";
 
 const game = createGame();
 const world = await createWorld();
@@ -25,6 +26,7 @@ const lanMenu = createLanMenu({
     .map(button => [button.dataset.minigame, button.textContent])),
   onOpen() { input.clear(); },
   onExit() {
+    if (document.pointerLockElement) document.exitPointerLock();
     game.returnToLan();
     input.clear();
     world.resetCamera(state);
@@ -66,6 +68,7 @@ function startMinigame(selection) {
   else if (selection === "eggs") game.enterEggs();
   else if (selection === "egg-battle") game.enterEggBattle();
   else if (selection === "maze") game.enterMaze();
+  else if (selection === "gun-arena") game.enterGunArena();
   else game.enterPillows();
   closeMenu();
   input.clear();
@@ -118,8 +121,22 @@ const input = createInput(key => {
     if (game.nearLanButton()) lanMenu.open();
     else if (game.nearButton()) openMenu();
   }
+}, (dx, dy) => {
+  if (state.minigame !== "gun-arena" || state.scene === "finished" || lanMenu.isOpen) return;
+  input.keys.aimYaw = (input.keys.aimYaw ?? state.yaw) - dx * 0.0025;
+  input.keys.aimPitch = Math.max(-1.1, Math.min(1.1,
+    (input.keys.aimPitch ?? state.pitch) - dy * 0.0025));
 });
 world.resetCamera(state);
+
+document.querySelector("canvas").addEventListener("click", event => {
+  if (state.minigame !== "gun-arena" || state.scene === "finished") return;
+  sounds.unlock();
+  if (!document.pointerLockElement && event.target.requestPointerLock) {
+    const request = event.target.requestPointerLock();
+    request?.catch(error => console.warn("Mouse capture unavailable; click the canvas to retry:", error));
+  }
+});
 
 function doorsPassed(racer) {
   return state.doors.filter(door => racer.z > door.z + GATE_HALF_DEPTH).length;
@@ -131,7 +148,9 @@ function raceProgress(racer) {
 }
 
 function updateUI() {
-  const controlsHelp = state.minigame === "egg-battle" ?
+  const controlsHelp = state.minigame === "gun-arena" ?
+    ` | Click to aim with mouse | Click / hold Space to shoot | ${BLASTER_HP} HP, last chicken standing` :
+    state.minigame === "egg-battle" ?
     " | E pick up egg | Space throw egg / jump when empty-handed" : state.minigame === "eggs" ?
     " | E pick up / steal / drop egg | Space dash (stuns on contact)" :
     state.minigame === "maze" ? " | Find the green EXIT | Avoid monsters' sight | 5 catches = OUT" : abilityHelp;
@@ -144,13 +163,16 @@ function updateUI() {
     : state.multiplayer
       ? `LAN ${state.minigame.toUpperCase()} | You: Player ${state.number} | ${
         state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
-          ["pillows", "egg-battle"].includes(state.minigame) ? `${racer.lives}/3 HP` :
+          ["pillows", "egg-battle", "gun-arena"].includes(state.minigame) ?
+            `${racer.lives}/${state.minigame === "gun-arena" ? BLASTER_HP : 3} HP` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
           state.minigame === "eggs" ? `${racer.eggScore} eggs` :
           state.minigame === "maze" ? (racer.eliminated ? "OUT" :
             `${racer.mazeRestarts}/5 catches`) :
             raceProgress(racer)}${racer.stunTimer > 0 ? " (stunned)" : ""}`).join(" | ")
-      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | ${state.minigame === "gun-arena" ? "A/D or Left/Right strafe" : "A/D turn"}${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+    : state.minigame === "gun-arena"
+      ? `CHICKEN BLASTER | You: ${state.lives}/${BLASTER_HP} HP | Rival: ${rival.lives}/${BLASTER_HP} HP | W/S move | A/D or Left/Right strafe${controlsHelp}`
     : state.minigame === "maze"
       ? `MAZE RACE | First to the green exit wins | Caught: ${state.mazeRestarts}/5 | ${state.mazeMonsters.length} roaming monsters | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "egg-battle"
@@ -192,8 +214,11 @@ function frame(now) {
   const keys = menuStep === null && !lanMenu.isOpen ? input.keys : {};
   lanMenu.setKeys(keys);
   const { moving, dt } = lanMenu.active ?
-    { moving: !state.eliminated && state.controls.forward !== 0, dt: Math.min(elapsed, 0.05) } :
+    { moving: !state.eliminated &&
+      (state.controls.forward !== 0 ||
+        (state.minigame === "gun-arena" && state.controls.strafe !== 0)), dt: Math.min(elapsed, 0.05) } :
     game.update(Math.min(elapsed, 0.05), elapsed, keys);
+  if (!lanMenu.active && Number.isFinite(input.keys.aimYaw)) input.keys.aimYaw = state.yaw;
   if (state.scene === "countdown") {
     const number = Math.ceil(state.countdown);
     if (number > 0 && number !== lastCountdown) sounds.countdownBeep(number);
@@ -203,7 +228,10 @@ function frame(now) {
     lastCountdown = null;
   }
   sounds.updateRace(state.scene, elapsed);
-  if (state.scene === "finished" && previousScene !== "finished") input.clear();
+  if (state.scene === "finished" && previousScene !== "finished") {
+    input.clear();
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
   updateUI();
   world.render(state, rival, dt, moving, game.nearButton(), game.nearLanButton());
   previousScene = state.scene;

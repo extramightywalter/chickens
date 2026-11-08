@@ -9,9 +9,10 @@ import {
   BUTTON, CELL, CHICKEN_SCALE, FINISH_LANDING, LAN_BUTTON, LOBBY_BOUNDS, LOBBY_CELL_DEPTH, LOBBY_CELL_WIDTH, LOBBY_MAP,
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
-import { DIVE_DURATION, SPIN_DURATION } from "./lobby.js";
+import { DIVE_DURATION, PLAYER_COLORS, SPIN_DURATION } from "./lobby.js";
 import { EGG_LIMIT, EGG_MAP_SCALE, EGG_PIT_HALF_SIZE } from "./eggs.js";
 import { BATTLE_ARENA, battleWalls } from "./egg-battle.js";
+import { EYE_HEIGHT, FIRE_INTERVAL, gunArena, gunFloorHeight } from "./gun-arena.js";
 import {
   MAZE_CELL, MAZE_SIZE, MAZE_WALL_HEIGHT, mazeClearFraction, mazePosition,
 } from "./maze.js";
@@ -24,28 +25,45 @@ const divePose = racer => racer.diveTimer > 0 ?
 const spinPose = racer => racer.spinTimer > 0 ?
   (SPIN_DURATION - racer.spinTimer) / SPIN_DURATION * Math.PI * 4 : 0;
 const RIVAL_COLORS = {
-  "_defaultMat(Clone)": 0xd62828,
+  "_defaultMat(Clone)": PLAYER_COLORS[1],
   "dark(Clone)": 0x641010,
 };
+const chickenMaterials = new WeakMap();
+const chickenColors = new WeakMap();
 
 function createChicken(model, rival = false) {
   const chicken = model.clone(true);
+  const materialsForColor = [];
   chicken.scale.setScalar(CHICKEN_SCALE);
   chicken.traverse(object => {
     if (!object.isMesh) return;
     object.castShadow = true;
-    if (rival) {
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      const rivalMaterials = materials.map(material => {
+    const materials = (Array.isArray(object.material) ? object.material : [object.material])
+      .map(material => {
         const clone = material.clone();
-        const color = RIVAL_COLORS[clone.name];
+        const color = rival ? RIVAL_COLORS[clone.name] : undefined;
         if (color !== undefined) clone.color.setHex(color);
+        if (clone.name === "_defaultMat(Clone)" || clone.name === "dark(Clone)") {
+          materialsForColor.push({
+            material: clone, name: clone.name, originalColor: clone.color.clone(),
+          });
+        }
         return clone;
       });
-      object.material = Array.isArray(object.material) ? rivalMaterials : rivalMaterials[0];
-    }
+    object.material = Array.isArray(object.material) ? materials : materials[0];
   });
+  chickenMaterials.set(chicken, materialsForColor);
   return chicken;
+}
+
+function setChickenColor(chicken, color) {
+  if (chickenColors.get(chicken) === color) return;
+  for (const { material, name, originalColor } of chickenMaterials.get(chicken)) {
+    if (color === null) material.color.copy(originalColor);
+    else if (name === "_defaultMat(Clone)") material.color.setHex(color);
+    else material.color.setHex(color).multiplyScalar(0.38);
+  }
+  chickenColors.set(chicken, color);
 }
 
 export async function createWorld() {
@@ -101,7 +119,39 @@ export async function createWorld() {
   const eggArena = new THREE.Group();
   const battleArena = new THREE.Group();
   const mazeArena = new THREE.Group();
-  scene.add(track, lobby, arena, doorCourse, eggArena, battleArena, mazeArena);
+  const gunCourse = new THREE.Group();
+  scene.add(track, lobby, arena, doorCourse, eggArena, battleArena, mazeArena, gunCourse);
+  const partGroups = new Map();
+  for (const piece of gunArena.pieces) {
+    const key = piece.color.join(",");
+    if (!partGroups.has(key)) partGroups.set(key, []);
+    partGroups.get(key).push(piece);
+  }
+  for (const pieces of partGroups.values()) {
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(...pieces[0].color) }), pieces.length);
+    const transform = new THREE.Object3D();
+    pieces.forEach((piece, index) => {
+      transform.position.set(piece.x, piece.y, piece.z);
+      transform.rotation.y = piece.angle;
+      transform.scale.set(piece.width, piece.height, piece.depth);
+      transform.updateMatrix();
+      mesh.setMatrixAt(index, transform.matrix);
+    });
+    mesh.castShadow = mesh.receiveShadow = true;
+    gunCourse.add(mesh);
+  }
+  const ventMaterial = new THREE.MeshLambertMaterial({ color: 0x263344 });
+  for (const vent of gunArena.vents) {
+    for (let n = -3; n <= 3; n++) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.025, 0.06), ventMaterial);
+      slat.position.set(vent.x, 0.335, vent.z + n * 0.23);
+      gunCourse.add(slat);
+    }
+  }
+  const bulletMeshes = new Map();
+  const bulletGeometry = new THREE.CylinderGeometry(0.055, 0.055, 0.55, 6);
+  const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffe270 });
   const mazeFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAZE_SIZE, MAZE_SIZE),
     new THREE.MeshLambertMaterial({ color: 0x6d7565 })
@@ -561,12 +611,11 @@ export async function createWorld() {
     if (!object.isMesh) return;
     const materials = (Array.isArray(object.material) ? object.material : [object.material])
       .map(material => {
-        const clone = material.clone();
         playerMaterials.push({
-          material: clone, opacity: clone.opacity, transparent: clone.transparent,
-          depthWrite: clone.depthWrite,
+          material, opacity: material.opacity, transparent: material.transparent,
+          depthWrite: material.depthWrite,
         });
-        return clone;
+        return material;
       });
     object.material = Array.isArray(object.material) ? materials : materials[0];
   });
@@ -578,6 +627,58 @@ export async function createWorld() {
     scene.add(model);
     return model;
   });
+  const { scene: blasterModel } = await loader.loadAsync(
+    new URL("../assets/models/chicken blaster.glb", import.meta.url).href
+  );
+  const wingMaterial = new THREE.MeshLambertMaterial({ color: 0xfff5dc });
+  const handMaterial = new THREE.MeshLambertMaterial({ color: 0xffb52e });
+  function weaponRig(firstPerson) {
+    const rig = new THREE.Group();
+    const gun = blasterModel.clone(true);
+    gun.scale.setScalar(firstPerson ? 0.25 : 0.32);
+    gun.position.set(0.32, firstPerson ? -0.65 : 0.7, firstPerson ? -0.9 : -0.85);
+    rig.add(gun);
+    const grips = firstPerson ? [
+      [[0.52, -0.8, -0.25], [0.35, -0.39, -0.79]],
+      [[-0.42, -0.8, -0.3], [0.23, -0.4, -1.05]],
+    ] : [
+      [[0.55, 1.15, 0], [0.38, 1.06, -0.63]],
+      [[-0.55, 1.15, 0], [0.21, 1.06, -1.05]],
+    ];
+    for (const [start, end] of grips) {
+      const a = new THREE.Vector3(...start), b = new THREE.Vector3(...end);
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, a.distanceTo(b), 4, 8), wingMaterial);
+      arm.position.copy(a).lerp(b, 0.5);
+      arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), handMaterial);
+      hand.position.copy(b);
+      rig.add(arm, hand);
+    }
+    if (firstPerson) rig.traverse(object => {
+      if (!object.isMesh) return;
+      object.material = Array.isArray(object.material) ?
+        object.material.map(material => material.clone()) : object.material.clone();
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        material.depthTest = false;
+        material.depthWrite = false;
+      }
+      object.renderOrder = 10;
+      object.castShadow = false;
+    });
+    return rig;
+  }
+  const heldWeapon = weaponRig(true);
+  heldWeapon.visible = false;
+  camera.add(heldWeapon);
+  scene.add(camera);
+  const opponentWeapons = [rivalChicken, ...lanChickens].map(model => {
+    const rig = weaponRig(false);
+    rig.scale.setScalar(1 / CHICKEN_SCALE);
+    rig.visible = false;
+    model.add(rig);
+    return rig;
+  });
+  const crosshair = document.getElementById("crosshair");
   const camPos = new THREE.Vector3();
   const rivalIndicator = document.getElementById("rival-indicator");
   const cameraDirection = new THREE.Vector3();
@@ -620,7 +721,8 @@ export async function createWorld() {
     const eggGame = state.minigame === "eggs";
     const battleGame = state.minigame === "egg-battle";
     const mazeGame = state.minigame === "maze";
-    ground.visible = !trackGame && !eggGame;
+    const gunGame = state.minigame === "gun-arena";
+    ground.visible = !trackGame && !eggGame && !gunGame;
     track.visible = trackGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
@@ -628,7 +730,37 @@ export async function createWorld() {
     eggArena.visible = eggGame;
     battleArena.visible = battleGame;
     mazeArena.visible = mazeGame;
+    gunCourse.visible = gunGame;
+    crosshair.hidden = !gunGame || state.scene === "finished" || state.eliminated;
+    heldWeapon.visible = gunGame && !state.eliminated;
+    opponentWeapons.forEach(rig => { rig.visible = gunGame; });
+    if (gunGame) {
+      const recoil = Math.max(0, (state.fireCooldown - FIRE_INTERVAL + 0.12) / 0.12);
+      heldWeapon.position.set(0, moving ? Math.sin(state.walk) * 0.012 : 0, recoil * 0.08);
+      heldWeapon.rotation.x = recoil * 0.06;
+      const active = new Set(state.bullets.map(bullet => bullet.id));
+      for (const [id, mesh] of bulletMeshes) {
+        if (active.has(id)) continue;
+        gunCourse.remove(mesh);
+        bulletMeshes.delete(id);
+      }
+      for (const bullet of state.bullets) {
+        let mesh = bulletMeshes.get(bullet.id);
+        if (!mesh) {
+          mesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+          bulletMeshes.set(bullet.id, mesh);
+          gunCourse.add(mesh);
+        }
+        mesh.position.set(bullet.x, bullet.y, bullet.z);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(bullet.vx, bullet.vy, bullet.vz).normalize());
+      }
+    }
     if (mazeGame) {
+      const exit = mazePosition(state.maze.exit), start = mazePosition(state.maze.start);
+      mazeExit.position.set(exit.x, 0.07, exit.z);
+      mazeExitSign.position.set(exit.x, 2.6, exit.z);
+      mazeStart.position.set(start.x, 0.06, start.z);
       if (mazeKey !== state.maze.key) {
         mazeKey = state.maze.key;
         if (mazeWallMesh) {
@@ -649,10 +781,6 @@ export async function createWorld() {
         mazeWallMesh.castShadow = mazeWallMesh.receiveShadow = true;
         mazeWallMesh.instanceMatrix.needsUpdate = true;
         mazeArena.add(mazeWallMesh);
-        const exit = mazePosition(state.maze.exit), start = mazePosition(state.maze.start);
-        mazeExit.position.set(exit.x, 0.07, exit.z);
-        mazeExitSign.position.set(exit.x, 2.6, exit.z);
-        mazeStart.position.set(start.x, 0.06, start.z);
       }
       mazeMonsterMeshes.forEach(({ group, arrow }, index) => {
         const hazard = state.mazeMonsters[index];
@@ -738,23 +866,27 @@ export async function createWorld() {
     const rivalTrackY = trackGame && !state.multiplayer ?
       trackChickenY("rival", rival.walk, rival.eliminated, dt) : null;
     rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer &&
-      (!battleGame || !rival.eliminated) &&
+      (!(battleGame || gunGame) || !rival.eliminated) &&
       (!trackGame || !rival.eliminated || rivalTrackY !== null);
-    chicken.visible = !state.eliminated || (trackGame && playerTrackY !== null);
+    setChickenColor(chicken, state.color);
+    setChickenColor(rivalChicken, state.multiplayer ? null : rival.color);
+    chicken.visible = !gunGame && (!state.eliminated || (trackGame && playerTrackY !== null));
     const opponents = state.multiplayer ? state.racers.filter(racer => racer.id !== state.id) : [];
     lanChickens.forEach((model, index) => {
       const racer = opponents[index];
       const trackY = racer && trackGame ?
         trackChickenY(`lan-${racer.id}`, racer.walk, racer.eliminated, dt) : null;
+      if (racer) setChickenColor(model, racer.color);
       model.visible = Boolean(racer && (!racer.eliminated || (trackGame && trackY !== null)));
       if (!racer) return;
       model.position.set(racer.x, trackGame ? trackY ?? 0 :
-        (eggGame ? eggFloorY(racer.x, racer.z) : 0) +
+        (eggGame ? eggFloorY(racer.x, racer.z) : gunGame ? gunFloorHeight(racer.x, racer.z) : 0) +
         Math.abs(Math.sin(racer.walk)) * 0.12, racer.z);
       model.position.y += divePose(racer) * 0.8 + (battleGame ? racer.jumpHeight : 0);
       model.rotation.set(-divePose(racer) * 0.75,
         racer.yaw + CHICKEN_YAW_OFFSET + spinPose(racer),
-        racer.controls.forward && !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0);
+        (racer.controls.forward || (gunGame && racer.controls.strafe)) &&
+          !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0);
     });
     const activePillows = new Set(state.pillows.map(pillow => pillow.id));
     for (const [id, mesh] of pillowMeshes) {
@@ -783,10 +915,10 @@ export async function createWorld() {
     chicken.rotation.set(-divePose(state) * 0.75,
       state.yaw + CHICKEN_YAW_OFFSET + spinPose(state),
       moving ? Math.sin(state.walk) * 0.06 : 0);
-    const rivalMoving = ["track", "pillows", "doors", "eggs", "egg-battle", "maze"].includes(state.scene) &&
-      dt > 0 && rival.controls.forward !== 0;
+    const rivalMoving = ["track", "pillows", "doors", "eggs", "egg-battle", "maze", "gun-arena"].includes(state.scene) &&
+      dt > 0 && (rival.controls.forward !== 0 || (gunGame && rival.controls.strafe !== 0));
     rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
-      (eggGame ? eggFloorY(rival.x, rival.z) : 0) +
+      (eggGame ? eggFloorY(rival.x, rival.z) : gunGame ? gunFloorHeight(rival.x, rival.z) : 0) +
       (rivalMoving ? Math.abs(Math.sin(rival.walk)) * 0.12 : 0), rival.z);
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.position.y += battleGame ? rival.jumpHeight : 0;
@@ -803,8 +935,9 @@ export async function createWorld() {
     }
     if (eggGame) positionEggCamera(target, state);
     if (mazeGame) positionMazeCamera(target, state);
+    if (gunGame) target.set(state.x, gunFloorHeight(state.x, state.z) + EYE_HEIGHT, state.z);
     // Keep the chase camera directly behind the player in these arenas.
-    if (doorGame || eggGame || battleGame || mazeGame) camPos.copy(target);
+    if (doorGame || eggGame || battleGame || mazeGame || gunGame) camPos.copy(target);
     else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
     const fadePlayer = mazeGame && Math.hypot(camPos.x - state.x, camPos.z - state.z) < 1.5;
@@ -818,10 +951,12 @@ export async function createWorld() {
       material.opacity = original.opacity * (fadePlayer ? 0.2 : 1);
       material.depthWrite = !fadePlayer && original.depthWrite;
     }
-    if (pillowGame) camera.lookAt(0, 0, 0);
+    if (gunGame) camera.lookAt(state.x + Math.sin(state.yaw) * Math.cos(state.pitch),
+      target.y + Math.sin(state.pitch), state.z + Math.cos(state.yaw) * Math.cos(state.pitch));
+    else if (pillowGame) camera.lookAt(0, 0, 0);
     else camera.lookAt(state.x, followHeight + 1.6, state.z);
-    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || mazeGame || state.multiplayer ? "none" : "flex";
-    if (state.scene !== "lobby" && !pillowGame && !eggGame && !mazeGame && !state.multiplayer) {
+    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || mazeGame || gunGame || state.multiplayer ? "none" : "flex";
+    if (state.scene !== "lobby" && !pillowGame && !eggGame && !mazeGame && !gunGame && !state.multiplayer) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
       camera.getWorldDirection(cameraDirection);
       const behind = direction.dot(cameraDirection) < 0;

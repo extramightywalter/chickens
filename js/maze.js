@@ -1,8 +1,8 @@
 import { EGG_LIMIT } from "./eggs.js";
 import { R, SPEED, TURN } from "./track.js";
 
-export const MAZE_SIZE = EGG_LIMIT * 2 * Math.sqrt(1.5);
-export const MAZE_COLS = 14;
+export const MAZE_SIZE = EGG_LIMIT * 2 * Math.sqrt(2);
+export const MAZE_COLS = 20;
 export const MAZE_CELL = MAZE_SIZE / MAZE_COLS;
 export const MAZE_WALL_THICKNESS = 0.3;
 export const MAZE_WALL_HEIGHT = 4.8;

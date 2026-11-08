@@ -1,5 +1,6 @@
 import {
-  createGame, DIVE_SPEED_MULTIPLIER, moveRacer, moveTrackRacer, updateAbilities,
+  createGame, DIVE_SPEED_MULTIPLIER, moveGunRacer, moveRacer, moveTrackRacer,
+  PLAYER_COLORS, updateAbilities,
   updateTrackProgress,
 } from "./lobby.js";
 import {
@@ -10,6 +11,7 @@ import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./
 import { createEggRound, eggWalls } from "./eggs.js";
 import { battleWalls, createEggBattleRound } from "./egg-battle.js";
 import { createMazeRound } from "./maze.js";
+import { createGunRound } from "./gun-arena.js";
 
 export function createLanGame(minigame, playerIds, random = Math.random) {
   const game = createGame({ random });
@@ -19,6 +21,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   else if (minigame === "eggs") game.enterEggs();
   else if (minigame === "egg-battle") game.enterEggBattle();
   else if (minigame === "maze") game.enterMaze();
+  else if (minigame === "gun-arena") game.enterGunArena();
   else throw new Error("Unknown minigame");
   if (playerIds.length < 2 || playerIds.length > 8 || new Set(playerIds).size !== playerIds.length) {
     throw new Error("LAN games require 2-8 distinct players");
@@ -31,6 +34,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   const eggRound = createEggRound();
   const battleRound = createEggBattleRound();
   const mazeRound = createMazeRound(random);
+  const gunRound = createGunRound();
   const previousActionKeys = new Map();
   if (minigame === "pillows") pillowRound.reset(state, game.rival);
   if (minigame === "doors") doorRound.reset(state, game.rival);
@@ -38,7 +42,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     const lane = index % 2 === 0 ? -1.6 : 1.6;
     const row = Math.floor(index / 2);
     return {
-      id, number: index + 1,
+      id, number: index + 1, color: PLAYER_COLORS[index],
       x: minigame === "track" ? START.x + lane :
         minigame === "doors" ? lane : Math.sin(index / playerIds.length * Math.PI * 2) * 5,
       z: minigame === "track" ? START.z + row * 2 :
@@ -54,6 +58,7 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   if (minigame === "eggs") eggRound.reset(state, racers);
   if (minigame === "egg-battle") battleRound.reset(state, racers);
   if (minigame === "maze") mazeRound.reset(state, racers);
+  if (minigame === "gun-arena") gunRound.reset(state, racers);
   for (const racer of racers) previousActionKeys.set(racer.id, { e: false, space: false });
 
   function finish(winners) {
@@ -79,6 +84,12 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       return;
     }
     state.goTimer = Math.max(0, state.goTimer - dt);
+    if (minigame === "gun-arena") {
+      const winners = gunRound.advance(state, racers, dt,
+        racer => inputs.get(racer.id) ?? {}, moveGunRacer);
+      if (winners) finish(winners);
+      return;
+    }
     if (minigame === "maze") {
       const winners = mazeRound.advance(state, racers, dt, (racer, step) => {
         const keys = inputs.get(racer.id) ?? {};

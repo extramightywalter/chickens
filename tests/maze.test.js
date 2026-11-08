@@ -28,9 +28,9 @@ function monsterAt(position, yaw = 0) {
   return { id: 0, ...position, yaw, walk: 0, waypoint: null, targetId: null, lastSeen: null };
 }
 
-test("maze floor is one-and-a-half times Egg Heist's area with tightly packed corridors", () => {
-  assert.ok(Math.abs(MAZE_SIZE ** 2 / (EGG_LIMIT * 2) ** 2 - 1.5) < 1e-12);
-  assert.equal(MAZE_COLS, 14);
+test("maze floor is twice Egg Heist's area with tighter corridors", () => {
+  assert.ok(Math.abs(MAZE_SIZE ** 2 / (EGG_LIMIT * 2) ** 2 - 2) < 1e-12);
+  assert.equal(MAZE_COLS, 20);
   assert.ok(MAZE_CELL - MAZE_WALL_THICKNESS > R * 2);
   assert.ok(MAZE_CELL - MAZE_WALL_THICKNESS < R * 6);
 });

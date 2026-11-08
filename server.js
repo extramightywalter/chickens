@@ -11,8 +11,9 @@ const root = dirname(fileURLToPath(import.meta.url));
 const types = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
   ".png": "image/png", ".glb": "model/gltf-binary",
+  ".model": "text/plain; charset=utf-8",
 };
-const controls = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "e", " "];
+const controls = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "e", " ", "fire"];
 
 export function createLanServer() {
   const players = new Map();
@@ -143,8 +144,18 @@ export function createLanServer() {
         if (!data.keys || typeof data.keys !== "object" || Array.isArray(data.keys)) {
           error = "Invalid controls.";
         } else {
-          player.keys = Object.fromEntries(controls.map(key => [key, data.keys[key] === true]));
-          player.lastInput = Date.now();
+          const nextKeys = Object.fromEntries(controls.map(key => [key, data.keys[key] === true]));
+          for (const key of ["aimYaw", "aimPitch"]) {
+            if (data.keys[key] !== undefined && !Number.isFinite(data.keys[key])) {
+              error = "Invalid aim controls.";
+              break;
+            }
+            if (data.keys[key] !== undefined) nextKeys[key] = data.keys[key];
+          }
+          if (!error) {
+            player.keys = nextKeys;
+            player.lastInput = Date.now();
+          }
         }
       } else error = "Unknown LAN action.";
       response.writeHead(error ? 400 : 200, { "Content-Type": "application/json" });

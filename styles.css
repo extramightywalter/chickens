@@ -69,3 +69,14 @@ canvas { display: block; }
 .menu-panel button:disabled { opacity: .5; cursor: wait; }
 #lan-status { line-height: 1.4; }
 #lan-members { text-align: left; line-height: 1.8; }
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font: bold 26px monospace;
+  text-shadow: 0 1px 3px black;
+  pointer-events: none;
+  z-index: 2;
+}

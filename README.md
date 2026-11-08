@@ -17,13 +17,35 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-an equal one-in-six Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, or Maze Race selection, or choose
+an equal one-in-seven Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, Maze Race, or Chicken Blaster selection, or choose
 **Choose minigame** to start any game directly.
+Each chicken gets a distinct color for the round; LAN colors match player slots.
 During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
 Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
 three-second cooldown.
 
+- **Chicken Blaster:** A first-person last-chicken-standing battle against the
+  solo rival or 2-8 players over LAN. Every chicken holds the supplied
+  `assets/models/chicken blaster.glb`, with visible wings and hands gripping it.
+  Everyone starts with **30 HP** in solo and LAN; each bullet does **1 damage**, and the last
+  survivor wins. Simultaneous final hits draw. W/S move; A/D or the left/right
+  arrow keys strafe relative to the camera in both solo and LAN. Click the game
+  to capture the mouse and aim horizontally
+  and vertically. Hold the
+  left mouse button or **Space** to fire, with unlimited ammo and a 0.45-second
+  shot cooldown. Escape releases the mouse. Walls and cover stop bullets.
+  Eliminated players cannot move or shoot. There is no jump, spin, dive, or
+  climbing in this mode.
+  The arena reads `assets/models/gun arina.model` directly. This Asset Forge
+  file contains part names and transforms, not exported meshes, so the game
+  reconstructs the supplied layout and colors with primitive geometry;
+  decorative aircraft/mech pieces are approximations. Exporting a GLB from
+  Asset Forge would be needed for their exact detailed appearance. Raised
+  structures block movement, while the five low vent grates can be walked over.
+  The rival navigates around cover and fires only when it has a clear shot,
+  but its shots have random horizontal and vertical spread so it often misses.
+  Human players' aim is unchanged, including over LAN.
 - **Maze Race:** Race the red rival, or 2-8 human players over LAN, through a
   freshly generated, tightly packed 14-by-14 maze every round. Each layout has
   48 extra connecting passages, creating loops and alternative routes for

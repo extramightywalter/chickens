@@ -4,6 +4,7 @@ import test from "node:test";
 import { createLanServer } from "../server.js";
 import { MINIGAMES } from "../js/pillows.js";
 import { EGG_STUN_DURATION } from "../js/eggs.js";
+import { MAZE_COLS, MAZE_SIZE, MAZE_WALL_THICKNESS } from "../js/maze.js";
 import { R } from "../js/track.js";
 
 async function setup(t) {
@@ -109,6 +110,13 @@ test("LAN maze rounds send all players the same layout with 48 alternate-route c
     }
     const rounds = await Promise.all(clients.slice(0, slots).map(client => client.next("round")));
     const maze = rounds[0].state.maze;
+    assert.equal(maze.links.length, MAZE_COLS ** 2);
+    const bounds = maze.walls.reduce((result, wall) => ({
+      minX: Math.min(result.minX, wall.minX), maxX: Math.max(result.maxX, wall.maxX),
+      minZ: Math.min(result.minZ, wall.minZ), maxZ: Math.max(result.maxZ, wall.maxZ),
+    }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+    assert.ok(Math.abs(bounds.maxX - bounds.minX - MAZE_SIZE - MAZE_WALL_THICKNESS) < 1e-10);
+    assert.ok(Math.abs(bounds.maxZ - bounds.minZ - MAZE_SIZE - MAZE_WALL_THICKNESS) < 1e-10);
     const passages = maze.links.reduce((total, links) => total + links.length, 0) / 2;
     assert.equal(passages - maze.links.length + 1, 48);
     for (const round of rounds) {
@@ -240,4 +248,50 @@ test("LAN server serves game assets but not source-server files or hidden files"
   assert.equal((await fetch(`${base}/api/lan`, {
     method: "POST", body: JSON.stringify({ playerId: "unknown", action: "host" }),
   })).status, 400);
+});
+
+test("Chicken Blaster LAN transmits authoritative aim, firing, health and arena assets", async t => {
+  const base = await setup(t);
+  const host = await connect(base), guest = await connect(base);
+  for (const path of ["/assets/models/gun%20arina.model", "/assets/models/chicken%20blaster.glb"]) {
+    assert.equal((await fetch(`${base}${path}`)).status, 200);
+  }
+  await host.action("host", { slots: 2, selection: "gun-arena" });
+  const { room } = await host.next("rooms", data => data.room);
+  await guest.action("join", { roomId: room.id });
+  const countdown = await host.next("round");
+  assert.equal(countdown.state.minigame, "gun-arena");
+  assert.deepEqual(countdown.racers.map(racer => racer.lives), [30, 30]);
+  assert.deepEqual(countdown.state.bullets, []);
+  await host.next("round", data => data.state.scene === "gun-arena");
+  for (const keys of [{ aimYaw: "bad" }, { aimPitch: null }, { aimYaw: {} }]) {
+    const invalid = await host.action("input", { keys });
+    assert.equal(invalid.status, 400);
+    assert.match(invalid.body.error, /aim/);
+  }
+  assert.equal((await host.action("input", {
+    keys: { fire: true, aimYaw: 0.7, aimPitch: 0.2 },
+  })).status, 200);
+  const fired = await host.next("round", data => data.racers[0].shotsFired > 0);
+  assert.ok(Math.abs(fired.racers[0].yaw - 0.7) < 1e-10);
+  assert.equal(fired.racers[0].pitch, 0.2);
+  assert.equal(fired.racers[0].shotsFired, 1);
+  assert.equal(fired.racers[1].shotsFired, 0);
+  assert.deepEqual(fired.racers.map(racer => racer.lives), [30, 30]);
+  const guestView = await guest.next("round", data => data.racers[0].shotsFired > 0);
+  assert.deepEqual(guestView.racers, fired.racers);
+  let latest = fired;
+  for (const [key, direction] of [
+    ["a", -1], ["arrowleft", -1], ["d", 1], ["arrowright", 1],
+  ]) {
+    const before = latest.racers[0];
+    assert.equal((await host.action("input", { keys: { [key]: true } })).status, 200);
+    latest = await host.next("round", data => {
+      const racer = data.racers[0];
+      const strafe = -(racer.x - before.x) * Math.cos(before.yaw) +
+        (racer.z - before.z) * Math.sin(before.yaw);
+      return racer.controls.strafe === direction && Math.sign(strafe) === direction &&
+        racer.yaw === before.yaw;
+    });
+  }
 });

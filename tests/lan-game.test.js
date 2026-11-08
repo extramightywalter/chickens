@@ -41,6 +41,7 @@ test("all minigames support every slot count with distinct spawns and no AI move
     for (let count = 2; count <= 8; count++) {
       const game = round(minigame, count);
       assert.equal(game.racers.length, count);
+      assert.equal(new Set(game.racers.map(racer => racer.color)).size, count);
       assert.equal(new Set(game.racers.map(racer => `${racer.x},${racer.z}`)).size, count);
       if (minigame === "track") {
         for (const racer of game.racers) assert.equal(isTrackSupported(racer.x, racer.z), true);

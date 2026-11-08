@@ -78,6 +78,9 @@ test("games have independent state and reset to the lobby", () => {
   assert.equal(game.nearButton(), true);
   assert.equal(other.state.x, LOBBY_SPAWN.x);
   startRace(game);
+  assert.notEqual(game.state.color, game.rival.color);
+  game.returnToButton();
+  assert.equal(game.state.color, null);
   game.reset();
   assert.equal(game.state.scene, "lobby");
   assert.equal(game.state.laps, 0);

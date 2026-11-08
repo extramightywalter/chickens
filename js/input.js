@@ -1,4 +1,4 @@
-export function createInput(onPress) {
+export function createInput(onPress, onLook = () => {}) {
   const keys = {};
 
   function clear() {
@@ -13,6 +13,16 @@ export function createInput(onPress) {
     if (!e.repeat) onPress(key);
   });
   addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+  addEventListener("mousedown", e => {
+    if (e.button === 0 && e.target instanceof HTMLCanvasElement) keys.fire = true;
+  });
+  addEventListener("mouseup", e => { if (e.button === 0) keys.fire = false; });
+  addEventListener("mousemove", e => {
+    if (document.pointerLockElement) onLook(e.movementX, e.movementY);
+  });
+  document.addEventListener("pointerlockchange", () => {
+    if (!document.pointerLockElement) clear();
+  });
   addEventListener("blur", clear);
   document.addEventListener("visibilitychange", () => { if (document.hidden) clear(); });
 
