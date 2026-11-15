@@ -680,10 +680,14 @@ export async function createWorld() {
   });
   const crosshair = document.getElementById("crosshair");
   const camPos = new THREE.Vector3();
+  const cameraFocus = new THREE.Vector3();
+  const focusTarget = new THREE.Vector3();
+  let cameraFocusInitialized = false;
   const rivalIndicator = document.getElementById("rival-indicator");
   const cameraDirection = new THREE.Vector3();
 
   function resetCamera(state) {
+    cameraFocusInitialized = false;
     if (state.minigame === "pillows") {
       const height = Math.max(26, 22 / camera.aspect);
       camPos.set(0, height, height * 0.55);
@@ -954,7 +958,16 @@ export async function createWorld() {
     if (gunGame) camera.lookAt(state.x + Math.sin(state.yaw) * Math.cos(state.pitch),
       target.y + Math.sin(state.pitch), state.z + Math.cos(state.yaw) * Math.cos(state.pitch));
     else if (pillowGame) camera.lookAt(0, 0, 0);
-    else camera.lookAt(state.x, followHeight + 1.6, state.z);
+    else {
+      focusTarget.set(state.x, followHeight + 1.6, state.z);
+      if (!cameraFocusInitialized) {
+        cameraFocus.copy(focusTarget);
+        cameraFocusInitialized = true;
+      } else if (state.multiplayer && trackGame) {
+        cameraFocus.lerp(focusTarget, 1 - Math.pow(0.0001, dt));
+      } else cameraFocus.copy(focusTarget);
+      camera.lookAt(cameraFocus);
+    }
     rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || mazeGame || gunGame || state.multiplayer ? "none" : "flex";
     if (state.scene !== "lobby" && !pillowGame && !eggGame && !mazeGame && !gunGame && !state.multiplayer) {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
