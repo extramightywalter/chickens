@@ -232,7 +232,24 @@ test("solo rival navigates cover and can win against an idle player", () => {
   assert.equal(game.rival.shotsFired, 0);
 });
 
-test("rival spread causes frequent misses without changing human aim or fire rate", () => {
+test("rival fires at the player rate and can shoot across clear sight lines", () => {
+  const round = createGunRound(() => 0.5);
+  const state = {};
+  const racers = [{ id: "human" }, { id: "rival" }];
+  round.reset(state, racers);
+  const [human, rival] = racers;
+  Object.assign(human, { x: -16, z: -20, yaw: Math.PI });
+  Object.assign(rival, { x: -11, z: 4.5, yaw: 0 });
+  assert.ok(Math.hypot(human.x - rival.x, human.z - rival.z) > 25);
+  assert.equal(round.chooseControls(rival, racers, 0.01)[" "], true);
+
+  round.advance(state, racers, FIRE_INTERVAL * 3 + 0.01,
+    () => ({ " ": true }), moveGunRacer);
+  assert.equal(human.shotsFired, 4);
+  assert.equal(rival.shotsFired, human.shotsFired);
+});
+
+test("rival aim is slightly tighter without changing human aim", () => {
   let seed = 7;
   const round = createGunRound(() => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -246,7 +263,7 @@ test("rival spread causes frequent misses without changing human aim or fire rat
   Object.assign(rival, { x: -16, z: -12, yaw: Math.PI });
   round.chooseControls(rival, racers, 0.01);
   let hits = 0;
-  const angles = [];
+  const yawAngles = [], pitchAngles = [];
   for (let n = 0; n < 100; n++) {
     rival.fireCooldown = 0;
     round.fire(state, rival);
@@ -255,15 +272,18 @@ test("rival spread causes frequent misses without changing human aim or fire rat
     const x = bullet.x + bullet.vx * time;
     const y = bullet.y + bullet.vy * time;
     if (Math.abs(x - human.x) < R + 0.08 && y >= 0 && y <= 1.9) hits++;
-    angles.push(Math.atan2(bullet.vx, -bullet.vz));
-    assert.ok(Math.abs(angles.at(-1)) <= 0.2);
+    yawAngles.push(Math.atan2(bullet.vx, -bullet.vz));
+    pitchAngles.push(Math.atan2(bullet.vy, Math.hypot(bullet.vx, bullet.vz)));
+    assert.ok(Math.abs(yawAngles.at(-1)) <= 0.16);
+    assert.ok(Math.abs(pitchAngles.at(-1)) <= 0.1);
     assert.equal(rival.fireCooldown, FIRE_INTERVAL);
     round.fire(state, rival);
     assert.equal(rival.shotsFired, n + 1, "spread does not bypass the cooldown");
     state.bullets = [];
   }
   assert.ok(hits >= 15 && hits <= 65, `expected frequent but not guaranteed misses; hit ${hits}/100`);
-  assert.ok(angles.some(angle => angle < -0.1) && angles.some(angle => angle > 0.1));
+  assert.ok(yawAngles.some(angle => angle < -0.08) && yawAngles.some(angle => angle > 0.08));
+  assert.ok(pitchAngles.some(angle => angle < -0.05) && pitchAngles.some(angle => angle > 0.05));
   round.fire(state, human);
   const bullet = state.bullets.at(-1);
   assert.equal(bullet.vx, 0);

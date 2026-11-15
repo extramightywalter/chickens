@@ -6,6 +6,8 @@ export const BULLET_SPEED = 48;
 export const FIRE_INTERVAL = 0.45;
 export const EYE_HEIGHT = 1.5;
 const SCALE = 2;
+const RIVAL_AIM_YAW_SPREAD = 0.16;
+const RIVAL_AIM_PITCH_SPREAD = 0.1;
 const sourceUrl = new URL("../assets/models/gun arina.model", import.meta.url);
 let source;
 if (typeof window === "undefined") {
@@ -184,8 +186,8 @@ export function createGunRound(random = Math.random) {
   function fire(state, racer) {
     if (racer.eliminated || racer.fireCooldown > 1e-8) return;
     const computer = ai.has(racer);
-    const yaw = racer.yaw + (computer ? (random() * 2 - 1) * 0.2 : 0);
-    const pitch = racer.pitch + (computer ? (random() * 2 - 1) * 0.12 : 0);
+    const yaw = racer.yaw + (computer ? (random() * 2 - 1) * RIVAL_AIM_YAW_SPREAD : 0);
+    const pitch = racer.pitch + (computer ? (random() * 2 - 1) * RIVAL_AIM_PITCH_SPREAD : 0);
     state.bullets.push({
       id: nextBullet++, ownerId: racer.id, x: racer.x, z: racer.z,
       y: gunFloorHeight(racer.x, racer.z) + EYE_HEIGHT,
@@ -238,7 +240,7 @@ export function createGunRound(random = Math.random) {
       w: move && forward > 0.35, s: move && forward < -0.35,
       a: move && strafe < -0.35, d: move && strafe > 0.35,
       aimYaw: yaw,
-      " ": clear && Math.hypot(target.x - racer.x, target.z - racer.z) < 25,
+      " ": clear,
       aimPitch: Math.atan2(gunFloorHeight(target.x, target.z) - gunFloorHeight(racer.x, racer.z),
         Math.hypot(target.x - racer.x, target.z - racer.z)),
     };
