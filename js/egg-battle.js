@@ -6,7 +6,7 @@ export const BATTLE_ARENA = Object.fromEntries(
 );
 export const BATTLE_HP = 3;
 export const BATTLE_PICKUP_RADIUS = 2.2;
-export const JUMP_SPEED = 8;
+export const JUMP_SPEED = 10;
 export const JUMP_GRAVITY = 20;
 export const THROW_SPEED = 24;
 const { minX, maxX, minZ, maxZ } = BATTLE_ARENA;

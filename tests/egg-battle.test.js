@@ -117,7 +117,12 @@ test("empty-handed Space jumps normally, lands, and never auto-jumps or forces f
   press(game, player, { " ": true });
   assert.ok(player.jumpHeight > 0);
   assert.equal(player.diveTimer, 0);
-  for (let n = 0; n < 30; n++) press(game, player, { " ": true });
+  let maxJumpHeight = player.jumpHeight;
+  for (let n = 0; n < 30; n++) {
+    press(game, player, { " ": true });
+    maxJumpHeight = Math.max(maxJumpHeight, player.jumpHeight);
+  }
+  assert.ok(maxJumpHeight > 1.85, "the jump clears a ground-level thrown egg");
   assert.equal(player.jumpHeight, 0);
   assert.equal(player.jumpVelocity, 0);
   assert.equal(player.x, x);
@@ -163,10 +168,12 @@ test("swept hits stop at the nearest chicken and cannot tunnel through a moving 
 test("jumping above a throw avoids damage", () => {
   const game = lan();
   const [player, target] = game.racers;
-  Object.assign(target, { x: 0, z: 2, jumpHeight: 2, jumpVelocity: 0 });
+  Object.assign(target, { x: 0, z: 8 });
+  press(game, target, { " ": true });
+  for (let n = 0; n < 3; n++) press(game, target, { " ": true });
   arm(game, player);
   press(game, player, { " ": true });
-  game.update(0.05);
+  for (let n = 0; n < 10; n++) game.update(0.05);
   assert.equal(target.lives, 3);
 });
 
@@ -267,6 +274,15 @@ test("solo E and Space use battle actions rather than spin and dive", () => {
   assert.ok(game.state.battleEggs.some(egg => egg.flying && egg.ownerId === "player"));
   assert.equal(game.state.spinTimer, 0);
   assert.equal(game.state.diveTimer, 0);
+});
+
+test("solo empty-handed Space jumps high enough to dodge eggs", () => {
+  const game = createGame();
+  game.enterEggBattle();
+  game.update(0.05, 3);
+  game.update(0.05, 0.05, { " ": true });
+  for (let n = 0; n < 4; n++) game.update(0.05, 0.05, { " ": true });
+  assert.ok(game.state.jumpHeight > 1.85);
 });
 
 test("AI stays idle without valid targets", () => {
