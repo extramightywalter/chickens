@@ -172,6 +172,9 @@ live list to join. The shared three-second countdown starts automatically
 when the final slot fills; there are no AI players or extra Start buttons.
 
 All chickens, controls, abilities, hazards, and results are synchronized by the server.
+LAN Race renders all chickens and the chase camera from the same interpolated
+positions, buffered by 100 ms to smooth the server's 20 Hz updates. This is
+visual only; controls, eliminations, and results remain server-authoritative.
 Race starts beneath the arch and is won by reaching the far-side finish or
 touching the red landing there.
 Pillow Dodge eliminates chickens at zero lives
@@ -198,6 +201,7 @@ red-button minigame selection remains unchanged.
 - `server.js`: static game server, LAN room discovery, membership, and authoritative rounds.
 - `js/lan-client.js` and `js/lan-menu.js`: LAN connection, host/join menus, and live slots.
 - `js/lan-game.js`: 2-8 human-player rounds using the shared minigame rules and hazards.
+- `js/lan-race-view.js`: buffered, render-only interpolation of LAN race poses.
 - `js/input.js`: keyboard state and focus handling.
 - `js/audio.js`: generated countdown, start, and chicken sounds.
 - `js/lobby.js`: movement, collisions, countdown, rival AI, and race rules;

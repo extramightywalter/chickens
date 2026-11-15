@@ -66,6 +66,12 @@ function setChickenColor(chicken, color) {
   chickenColors.set(chicken, color);
 }
 
+function setGunArmColor(rig, color) {
+  if (color == null || rig.userData.armColor === color) return;
+  rig.userData.armMaterial.color.setHex(color);
+  rig.userData.armColor = color;
+}
+
 export async function createWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
@@ -634,6 +640,8 @@ export async function createWorld() {
   const handMaterial = new THREE.MeshLambertMaterial({ color: 0xffb52e });
   function weaponRig(firstPerson) {
     const rig = new THREE.Group();
+    const armMaterial = wingMaterial.clone();
+    rig.userData.armMaterial = armMaterial;
     const gun = blasterModel.clone(true);
     gun.scale.setScalar(firstPerson ? 0.25 : 0.32);
     gun.position.set(0.32, firstPerson ? -0.65 : 0.7, firstPerson ? -0.9 : -0.85);
@@ -647,7 +655,7 @@ export async function createWorld() {
     ];
     for (const [start, end] of grips) {
       const a = new THREE.Vector3(...start), b = new THREE.Vector3(...end);
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, a.distanceTo(b), 4, 8), wingMaterial);
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, a.distanceTo(b), 4, 8), armMaterial);
       arm.position.copy(a).lerp(b, 0.5);
       arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), handMaterial);
@@ -657,7 +665,8 @@ export async function createWorld() {
     if (firstPerson) rig.traverse(object => {
       if (!object.isMesh) return;
       object.material = Array.isArray(object.material) ?
-        object.material.map(material => material.clone()) : object.material.clone();
+        object.material.map(material => material === armMaterial ? material : material.clone()) :
+        object.material === armMaterial ? object.material : object.material.clone();
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
         material.depthTest = false;
         material.depthWrite = false;
@@ -678,6 +687,7 @@ export async function createWorld() {
     model.add(rig);
     return rig;
   });
+  const [rivalWeapon, ...lanWeapons] = opponentWeapons;
   const crosshair = document.getElementById("crosshair");
   const camPos = new THREE.Vector3();
   const cameraFocus = new THREE.Vector3();
@@ -737,6 +747,7 @@ export async function createWorld() {
     gunCourse.visible = gunGame;
     crosshair.hidden = !gunGame || state.scene === "finished" || state.eliminated;
     heldWeapon.visible = gunGame && !state.eliminated;
+    setGunArmColor(heldWeapon, state.color);
     opponentWeapons.forEach(rig => { rig.visible = gunGame; });
     if (gunGame) {
       const recoil = Math.max(0, (state.fireCooldown - FIRE_INTERVAL + 0.12) / 0.12);
@@ -874,13 +885,17 @@ export async function createWorld() {
       (!trackGame || !rival.eliminated || rivalTrackY !== null);
     setChickenColor(chicken, state.color);
     setChickenColor(rivalChicken, state.multiplayer ? null : rival.color);
+    if (!state.multiplayer) setGunArmColor(rivalWeapon, rival.color);
     chicken.visible = !gunGame && (!state.eliminated || (trackGame && playerTrackY !== null));
     const opponents = state.multiplayer ? state.racers.filter(racer => racer.id !== state.id) : [];
     lanChickens.forEach((model, index) => {
       const racer = opponents[index];
       const trackY = racer && trackGame ?
         trackChickenY(`lan-${racer.id}`, racer.walk, racer.eliminated, dt) : null;
-      if (racer) setChickenColor(model, racer.color);
+      if (racer) {
+        setChickenColor(model, racer.color);
+        setGunArmColor(lanWeapons[index], racer.color);
+      }
       model.visible = Boolean(racer && (!racer.eliminated || (trackGame && trackY !== null)));
       if (!racer) return;
       model.position.set(racer.x, trackGame ? trackY ?? 0 :

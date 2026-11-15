@@ -5,6 +5,7 @@ import { createWorld } from "./world.js";
 import { createSoundEffects } from "./audio.js";
 import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
 import { createLanMenu } from "./lan-menu.js";
+import { createLanRaceView } from "./lan-race-view.js";
 import { BLASTER_HP } from "./gun-arena.js";
 
 const game = createGame();
@@ -21,17 +22,21 @@ const minigameOptions = document.getElementById("minigame-options");
 const menuTitle = document.getElementById("menu-title");
 const abilityHelp = " | E spin (2s, half speed, 3s cooldown) | Space dive (3s cooldown)";
 let menuStep = null;
+const lanRaceView = createLanRaceView();
 const lanMenu = createLanMenu({
   choices: Object.fromEntries([...minigameOptions.querySelectorAll("[data-minigame]")]
     .map(button => [button.dataset.minigame, button.textContent])),
   onOpen() { input.clear(); },
   onExit() {
     if (document.pointerLockElement) document.exitPointerLock();
+    lanRaceView.reset();
     game.returnToLan();
     input.clear();
     world.resetCamera(state);
   },
   onRound(round, playerId, first) {
+    if (first) lanRaceView.reset();
+    if (round.state.minigame === "track") lanRaceView.push(round.racers, performance.now());
     const local = round.racers.find(racer => racer.id === playerId);
     Object.assign(state, round.state, local, {
       racers: round.racers,
@@ -233,7 +238,15 @@ function frame(now) {
     if (document.pointerLockElement) document.exitPointerLock();
   }
   updateUI();
-  world.render(state, rival, dt, moving, game.nearButton(), game.nearLanButton());
+  let renderState = state;
+  if (lanMenu.active && state.minigame === "track") {
+    const racers = lanRaceView.sample(now);
+    const local = racers?.find(racer => racer.id === state.id);
+    if (local) renderState = { ...state, ...local, racers };
+  }
+  const renderMoving = renderState === state ? moving :
+    !renderState.eliminated && renderState.controls.forward !== 0;
+  world.render(renderState, rival, dt, renderMoving, game.nearButton(), game.nearLanButton());
   previousScene = state.scene;
   requestAnimationFrame(frame);
 }
