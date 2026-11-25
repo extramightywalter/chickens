@@ -225,17 +225,25 @@ export function createLanServer() {
     });
   });
   let last = performance.now();
+  let accumulator = 0;
   const timer = setInterval(() => {
     const now = performance.now();
-    const dt = Math.min((now - last) / 1000, 0.1);
+    const elapsed = Math.min((now - last) / 1000, 0.25);
     last = now;
+    accumulator += elapsed;
+    while (accumulator >= 0.05) {
+      for (const room of rooms.values()) {
+        if (!room.game) continue;
+        const inputs = new Map(room.members.map(id => {
+          const player = players.get(id);
+          return [id, Date.now() - player.lastInput < 1000 ? player.keys : {}];
+        }));
+        room.game.update(0.05, inputs);
+      }
+      accumulator -= 0.05;
+    }
     for (const room of rooms.values()) {
       if (!room.game) continue;
-      const inputs = new Map(room.members.map(id => {
-        const player = players.get(id);
-        return [id, Date.now() - player.lastInput < 1000 ? player.keys : {}];
-      }));
-      room.game.update(dt, inputs);
       for (const id of room.members) {
         const player = players.get(id);
         if (player.response.writableLength < 65536) {

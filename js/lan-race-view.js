@@ -35,6 +35,12 @@ export function createLanRaceView() {
           x: lerp(before.x, next.x, fraction),
           z: lerp(before.z, next.z, fraction),
           yaw: before.yaw + angleDelta(before.yaw, next.yaw) * fraction,
+          pitch: lerp(before.pitch ?? 0, next.pitch ?? 0, fraction),
+          jumpHeight: lerp(before.jumpHeight ?? 0, next.jumpHeight ?? 0, fraction),
+          cannonY: lerp(before.cannonY ?? 0, next.cannonY ?? 0, fraction),
+          cannonAimY: lerp(before.cannonAimY ?? 0, next.cannonAimY ?? 0, fraction),
+          cannonTime: lerp(before.cannonTime ?? 0, next.cannonTime ?? 0, fraction),
+          controls: next.controls,
           // A stopped walk phase resets to zero; do not rewind through every stride.
           walk: before.walk + (next.walk >= before.walk ? next.walk - before.walk :
             angleDelta(before.walk, next.walk)) * fraction,

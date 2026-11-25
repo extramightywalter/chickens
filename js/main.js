@@ -88,7 +88,7 @@ const lanMenu = createLanMenu({
   },
   onRound(round, playerId, first) {
     if (first) { lanRaceView.reset(); roundReward = null; }
-    if (round.state.minigame === "track") lanRaceView.push(round.racers, performance.now());
+    lanRaceView.push(round.racers, performance.now());
     const local = round.racers.find(racer => racer.id === playerId);
     Object.assign(state, round.state, local, {
       racers: round.racers,
@@ -352,7 +352,7 @@ function frame(now) {
     state.appearance = shop.appearance;
     state.color = ITEMS[state.appearance.color].color;
   }
-  if (lanMenu.active && state.minigame === "track") {
+  if (lanMenu.active) {
     const racers = lanRaceView.sample(now);
     const local = racers?.find(racer => racer.id === state.id);
     if (local) renderState = { ...state, ...local, racers };
