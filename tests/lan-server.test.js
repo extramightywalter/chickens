@@ -57,6 +57,23 @@ async function connect(base) {
   return { id: initial.playerId, next, action, disconnect() { abort.abort(); } };
 }
 
+test("LAN rounds share selected appearances and reject malformed selections", async t => {
+  const base = await setup(t);
+  const host = await connect(base), guest = await connect(base);
+  const appearance = { color: "orange", hat: "cap", clothing: "jersey" };
+  assert.equal((await host.action("host", {
+    slots: 2, selection: "track", appearance: { ...appearance, color: "cap" },
+  })).status, 400);
+  assert.equal((await host.action("host", { slots: 2, selection: "track", appearance })).status, 200);
+  const { room } = await host.next("rooms", data => data.room);
+  const other = { color: "red", hat: "headphones", clothing: "gamer" };
+  assert.equal((await guest.action("join", { roomId: room.id, appearance: other })).status, 200);
+  const round = await host.next("round");
+  assert.ok(round.state.roundId);
+  assert.deepEqual(round.racers.map(racer => racer.appearance), [appearance, other]);
+  assert.equal(round.racers[0].color, 0xe67e22);
+});
+
 test("rooms advertise host occupancy, enforce settings, and start only when all 2-8 slots fill", async t => {
   const base = await setup(t);
   const clients = [];

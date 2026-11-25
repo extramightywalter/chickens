@@ -1,0 +1,10 @@
+# Made using Asset Forge (2.5.3)
+
+:materials
+
+[name:_defaultMat;color:RGBA(0.000, 0.240, 1.000, 1.000);scale:(1.00, 1.00);shader:Default;mapping:0;valueA:0.35;valueB:0.25;]
+
+:models
+
+[name:;collection:Primitives;type:sphere_half;position:(0.0000, 0.0000, 0.0000);rotation:(0.0000, 0.0000, 0.0000);scale:(1.0000, 1.0000, 1.0000);group:;locked:False;hidden:False;materials:_defaultMat;]
+[name:;collection:Primitives;type:cylinderHollow_half;position:(-0.1000, 0.3500, -0.0050);rotation:(90.0000, 90.0000, 0.0000);scale:(0.9900, 0.8000, 0.7000);group:;locked:False;hidden:False;materials:_defaultMat;]

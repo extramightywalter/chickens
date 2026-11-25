@@ -1,6 +1,6 @@
 import { createLanClient } from "./lan-client.js";
 
-export function createLanMenu({ choices, onRound, onExit, onOpen }) {
+export function createLanMenu({ choices, onRound, onExit, onOpen, getAppearance }) {
   const overlay = document.getElementById("lan-menu");
   const title = document.getElementById("lan-title");
   const status = document.getElementById("lan-status");
@@ -63,7 +63,9 @@ export function createLanMenu({ choices, onRound, onExit, onOpen }) {
       button.dataset.roomId = room.id;
       button.textContent = `${labels[room.selection]} - ${room.members.length}/${room.slots} players`;
       button.disabled = busy || !connected;
-      button.addEventListener("click", () => run(() => client.action("join", { roomId: room.id })));
+      button.addEventListener("click", () => run(() => client.action("join", {
+        roomId: room.id, appearance: getAppearance?.(),
+      })));
       games.append(button);
       if (focusedRoom === room.id) button.focus();
     }
@@ -136,6 +138,7 @@ export function createLanMenu({ choices, onRound, onExit, onOpen }) {
     event.preventDefault();
     run(() => client.action("host", {
       selection: selection.value, slots: Number(document.getElementById("lan-slots").value),
+      appearance: getAppearance?.(),
     }));
   });
   back.addEventListener("click", () => {

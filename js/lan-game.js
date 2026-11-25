@@ -10,8 +10,10 @@ import { PILLOW_LIVES, arenaWalls, createPillowRound } from "./pillows.js";
 import { FINISH_Z, createDoorRound, gateWalls, lockedWalls, pathWalls } from "./doors.js";
 import { createEggRound, eggWalls } from "./eggs.js";
 import { battleWalls, createEggBattleRound } from "./egg-battle.js";
-import { createMazeRound } from "./maze.js";
+import { createMazeRound, mazeCellAt, mazePath } from "./maze.js";
 import { createGunRound } from "./gun-arena.js";
+import { createSurvivalRound } from "./survival.js";
+import { createCannonRace } from "./cannon-race.js";
 
 export function createLanGame(minigame, playerIds, random = Math.random) {
   const game = createGame({ random });
@@ -22,6 +24,8 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   else if (minigame === "egg-battle") game.enterEggBattle();
   else if (minigame === "maze") game.enterMaze();
   else if (minigame === "gun-arena") game.enterGunArena();
+  else if (minigame === "survival") game.enterSurvival();
+  else if (minigame === "cannon-race") game.enterCannonRace();
   else throw new Error("Unknown minigame");
   if (playerIds.length < 2 || playerIds.length > 8 || new Set(playerIds).size !== playerIds.length) {
     throw new Error("LAN games require 2-8 distinct players");
@@ -35,7 +39,11 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   const battleRound = createEggBattleRound();
   const mazeRound = createMazeRound(random);
   const gunRound = createGunRound();
+  const survivalRound = createSurvivalRound(random);
+  const cannonRace = createCannonRace(random);
   const previousActionKeys = new Map();
+  const eliminationTicks = new Map();
+  let tick = 0;
   if (minigame === "pillows") pillowRound.reset(state, game.rival);
   if (minigame === "doors") doorRound.reset(state, game.rival);
   const racers = playerIds.map((id, index) => {
@@ -59,6 +67,8 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
   if (minigame === "egg-battle") battleRound.reset(state, racers);
   if (minigame === "maze") mazeRound.reset(state, racers);
   if (minigame === "gun-arena") gunRound.reset(state, racers);
+  if (minigame === "survival") survivalRound.reset(state, racers);
+  if (minigame === "cannon-race") cannonRace.reset(state, racers);
   for (const racer of racers) previousActionKeys.set(racer.id, { e: false, space: false });
 
   function finish(winners) {
@@ -66,11 +76,15 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     state.winnerIds = winners.map(racer => racer.id);
   }
 
-  function update(dt, inputs = new Map()) {
+  function advance(dt, inputs = new Map()) {
     if (state.scene === "finished") return;
     if (state.scene === "countdown") {
       for (const racer of racers) {
-        if (minigame === "egg-battle") {
+        if (minigame === "cannon-race") {
+          cannonRace.actions(racer, inputs.get(racer.id) ?? {});
+        } else if (minigame === "survival") {
+          survivalRound.actions(state, racer, inputs.get(racer.id) ?? {}, false);
+        } else if (minigame === "egg-battle") {
           battleRound.actions(state, racer, 0, inputs.get(racer.id) ?? {},
             previousActionKeys.get(racer.id), false);
         } else updateAbilities(racer, 0, inputs.get(racer.id) ?? {},
@@ -84,6 +98,17 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
       return;
     }
     state.goTimer = Math.max(0, state.goTimer - dt);
+    if (minigame === "cannon-race") {
+      const winners = cannonRace.advance(state, racers, dt, racer => inputs.get(racer.id) ?? {});
+      if (winners) finish(winners);
+      return;
+    }
+    if (minigame === "survival") {
+      const winners = survivalRound.advance(state, racers, dt,
+        racer => inputs.get(racer.id) ?? {}, moveRacer);
+      if (winners) finish(winners);
+      return;
+    }
     if (minigame === "gun-arena") {
       const winners = gunRound.advance(state, racers, dt,
         racer => inputs.get(racer.id) ?? {}, moveGunRacer);
@@ -163,6 +188,46 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     const survivors = racers.filter(racer => !racer.eliminated);
     if (winners.length) finish(winners);
     else if (survivors.length <= 1) finish(survivors);
+  }
+
+  function update(dt, inputs = new Map()) {
+    if (state.scene === "finished") return;
+    advance(dt, inputs);
+    tick++;
+    for (const racer of racers) {
+      if (racer.eliminated && !eliminationTicks.has(racer.id)) eliminationTicks.set(racer.id, tick);
+    }
+    if (state.scene !== "finished") return;
+    const progress = racer => {
+      if (minigame === "eggs") return racer.eggScore;
+      if (minigame === "track") {
+        const next = checkpoints[Math.min(racer.nextCheckpoint, checkpoints.length - 1)];
+        return racer.nextCheckpoint * 1000 - Math.hypot(racer.x - next.x, racer.z - next.z);
+      }
+      if (minigame === "doors") return racer.z;
+      if (minigame === "cannon-race") return racer.cannonStage * 1000 + racer.z;
+      if (minigame === "maze") return -mazePath(state.maze, mazeCellAt(racer), state.maze.exit).length;
+      return 0;
+    };
+    const scores = racers.map(racer => ({
+      id: racer.id,
+      winner: state.winnerIds.includes(racer.id),
+      elimination: eliminationTicks.get(racer.id) ?? Infinity,
+      progress: progress(racer),
+    }));
+    const compare = (a, b) => {
+      if (a.winner && b.winner) return 0;
+      return Number(b.winner) - Number(a.winner) || b.elimination - a.elimination ||
+        (a.elimination === Infinity && b.elimination === Infinity ? b.progress - a.progress : 0);
+    };
+    scores.sort(compare);
+    state.places = scores.map((score, index) => ({
+      id: score.id,
+      place: index > 0 && compare(scores[index - 1], score) === 0 ? null : index + 1,
+    }));
+    for (let index = 1; index < state.places.length; index++) {
+      if (state.places[index].place === null) state.places[index].place = state.places[index - 1].place;
+    }
   }
 
   return { state, racers, update };

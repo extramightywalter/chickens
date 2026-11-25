@@ -1,5 +1,5 @@
 import {
-  BUTTON, FINISH_LANDING, LAN_BUTTON, LOBBY_SPAWN, R, RIVAL_SPEED, SPEED, START, TURN,
+  BUTTON, FINISH_LANDING, LAN_BUTTON, LOBBY_SPAWN, R, RIVAL_SPEED, SHOP_DESK, SPEED, START, TURN,
   TRACK_CHECKPOINT_RADIUS, checkpoints, isTrackSupported, lobbyWalls, touchesFinishLanding,
 } from "./track.js";
 import { MINIGAMES, arenaWalls, createPillowRound } from "./pillows.js";
@@ -8,6 +8,8 @@ import { createEggRound, eggWalls } from "./eggs.js";
 import { battleWalls, createEggBattleRound } from "./egg-battle.js";
 import { createMazeRound } from "./maze.js";
 import { createGunRound } from "./gun-arena.js";
+import { createSurvivalRound } from "./survival.js";
+import { createCannonRace } from "./cannon-race.js";
 
 export const SPIN_DURATION = 2;
 export const DIVE_DURATION = 0.8;
@@ -115,6 +117,8 @@ export function createGame({ random = Math.random } = {}) {
   const battleRound = createEggBattleRound();
   const mazeRound = createMazeRound(random);
   const gunRound = createGunRound(random);
+  const survivalRound = createSurvivalRound(random);
+  const cannonRace = createCannonRace(random);
   let previousActionKeys = { e: false, space: false };
   let driver;
 
@@ -131,6 +135,9 @@ export function createGame({ random = Math.random } = {}) {
       stunTimer: 0,
       battleEggs: [], jumpHeight: 0, jumpVelocity: 0, throwCooldown: 0,
       maze: null, mazeMonsters: [],
+      survivalMap: null, survivalMonsters: [], survivalProjectiles: [], defenses: [],
+      cannonWalls: null,
+      carryingDefenseId: null, invulnerable: 0, survivalNotice: "",
       bullets: [], pitch: 0, fireCooldown: 0, shotsFired: 0,
       multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
     });
@@ -154,6 +161,12 @@ export function createGame({ random = Math.random } = {}) {
   function nearLanButton() {
     return state.scene === "lobby" &&
       Math.hypot(state.x - LAN_BUTTON.x, state.z - LAN_BUTTON.z) < LAN_BUTTON.r + R + 0.5;
+  }
+
+  function nearShop() {
+    return state.scene === "lobby" &&
+      Math.abs(state.x - SHOP_DESK.x) < SHOP_DESK.halfWidth + 2 &&
+      Math.abs(state.z - SHOP_DESK.z) < SHOP_DESK.halfDepth + 2;
   }
 
   function returnToLan() {
@@ -188,6 +201,8 @@ export function createGame({ random = Math.random } = {}) {
     else if (selected === "eggs") enterEggs();
     else if (selected === "maze") enterMaze();
     else if (selected === "gun-arena") enterGunArena();
+    else if (selected === "survival") enterSurvival();
+    else if (selected === "cannon-race") enterCannonRace();
     else enterEggBattle();
     return selected;
   }
@@ -225,6 +240,22 @@ export function createGame({ random = Math.random } = {}) {
     state.id = "player";
     rival.id = "rival";
     gunRound.reset(state, [state, rival]);
+    state.countdown = 3;
+  }
+
+  function enterSurvival() {
+    setScene("countdown", { x: 0, z: 0 }, 0);
+    state.minigame = "survival";
+    state.id = "player";
+    rival.id = "rival";
+    survivalRound.reset(state, [state, rival]);
+    state.countdown = 3;
+  }
+
+  function enterCannonRace() {
+    setScene("countdown", { x: 0, z: 0 }, 0);
+    state.minigame = "cannon-race";
+    cannonRace.reset(state, [state, rival]);
     state.countdown = 3;
   }
 
@@ -266,6 +297,35 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   function update(dt, elapsed = dt, keys = {}) {
+    if (state.minigame === "cannon-race") {
+      if (state.scene === "finished") return { moving: false, dt: 0 };
+      if (state.scene === "countdown") {
+        cannonRace.actions(state, keys);
+        state.countdown = Math.max(0, state.countdown - elapsed);
+        if (state.countdown === 0) { state.scene = "cannon-race"; state.goTimer = 0.7; }
+        return { moving: false, dt: 0 };
+      }
+      state.goTimer = Math.max(0, state.goTimer - elapsed);
+      const winners = cannonRace.advance(state, [state, rival], dt,
+        (racer, step) => racer === state ? keys : cannonRace.chooseControls(state, rival, step));
+      if (winners) finishRace(winners.length === 1 ? winners[0] === state : null);
+      return { moving: state.controls.forward !== 0, dt };
+    }
+    if (state.minigame === "survival") {
+      if (state.scene === "finished") return { moving: false, dt: 0 };
+      if (state.scene === "countdown") {
+        survivalRound.actions(state, state, keys, false);
+        state.countdown = Math.max(0, state.countdown - elapsed);
+        if (state.countdown === 0) { state.scene = "survival"; state.goTimer = 0.7; }
+        return { moving: false, dt: 0 };
+      }
+      state.goTimer = Math.max(0, state.goTimer - elapsed);
+      const winners = survivalRound.advance(state, [state, rival], dt,
+        (racer, step) => racer === state ? keys : survivalRound.chooseControls(state, racer, step),
+        moveRacer);
+      if (winners) finishRace(winners.length === 0 ? null : winners[0] === state);
+      return { moving: !state.eliminated && state.controls.forward !== 0, dt };
+    }
     if (state.minigame === "gun-arena") {
       if (state.scene === "finished") return { moving: false, dt: 0 };
       if (state.scene === "countdown") {
@@ -401,7 +461,7 @@ export function createGame({ random = Math.random } = {}) {
 
   reset();
   return {
-    state, rival, nearButton, nearLanButton, returnToLan, enterTrack, enterPillows, enterDoors, enterEggs, enterEggBattle, enterMaze, enterGunArena, enterMinigame,
-    reset, returnToButton, update,
+    state, rival, nearButton, nearLanButton, nearShop, returnToLan, enterTrack, enterPillows, enterDoors, enterEggs, enterEggBattle, enterMaze, enterGunArena, enterSurvival, enterMinigame,
+    enterCannonRace, reset, returnToButton, update,
   };
 }

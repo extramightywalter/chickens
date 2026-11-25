@@ -17,14 +17,79 @@ so an internet connection is required. GitHub Pages serves the same files as-is.
 W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
-an equal one-in-seven Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, Maze Race, or Chicken Blaster selection, or choose
+an equal chance of Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, Maze Race,
+Chicken Blaster, Monster Survival, or Cannon Race, or choose
 **Choose minigame** to start any game directly.
-Each chicken gets a distinct color for the round; LAN colors match player slots.
+Your chosen color and outfit follow you into solo and LAN games; LAN players
+see one another's choices.
 During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
 Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
 three-second cooldown.
 
+## Shop and coins
+
+Walk into the shop and press **E** near the existing counter and shopkeeper.
+The menu opens on **Shop**; **My stuff** contains everything you own. Red, green,
+blue, purple, Gamer T, and headphones are free. The shop sells a baseball cap
+for 17 coins, a pitcher's jersey for 18, orange for 5, and cyan for 8. Select
+an owned item to equip it; select an equipped hat or shirt again to remove it.
+Your balance, purchases, and equipment are saved in this browser on this server's
+address. Clearing browser storage removes them; other devices have separate saves.
+The clothing, headphones, and cap use the supplied exported GLB models.
+
+Coins are awarded only in completed human LAN rounds, not against the solo rival:
+first place earns 1 coin with two players; first and second earn 2 and 1 with
+three; first, second, and third earn 3, 2, and 1 with four or more. Tied players
+share a place and its reward; a full draw earns no coins. Rounds still end under
+their normal rules: remaining race places use current progress, Egg Heist uses
+egg scores, and eliminated players are ordered by when they went out. Equal
+progress or simultaneous eliminations tie. A completed round can be credited
+only once.
+
+- **Cannon Race:** Race a solo rival or 2–8 LAN players through five walls. Use
+  **WASD** or the **arrow keys** to walk into the cannon, use the same keys to
+  aim, then press **Space** to launch. You gradually drop in flight. Press
+  **E** or press **Space** again just before the wall to spin through it. At
+  least **75%** of your chicken's footprint must overlap teal squares and the
+  spin must still be active. Each wall has 12 squares, with more solid squares
+  at each stage. Miss and you fall out of the race. After the fifth wall, run
+  across the checkered finish line before anyone else.
+
+- **Monster Survival:** Last player standing against the solo rival or 2-8 LAN
+  players. Everyone starts together in the central room with **3 lives**.
+  Every round generates a connected map 10% wider than Maze Race (21% more
+  floor area), with narrow halls and five large rooms. W/S move and A/D turn;
+  there is no spin, dive, or jump.
+  Eight defenses (four flame guns and four traps) are scattered around the map, including one
+  of each near the start. Press **E** to carry the nearest defense, then release
+  and press E again to place it in front of you, facing your current direction.
+  Only one can be carried at a time; walls block pickup and placement. Carrying
+  either item reduces movement speed to 65% of normal.
+  Ground flame guns fire a short 0.3-second burst only when a monster enters
+  their forward cone, up to five units away (including its body radius).
+  They stay idle without a monster target; players cannot trigger them.
+  Traps kill monsters that step on them and remain reusable.
+  Both traps and active flames also cost players one life, including the player
+  who placed them. Defenses are inactive while carried.
+  There are six regular monsters, two fast **Runna Monsters**, and one
+  **Monster Blaster**. All three are twice their original size, with doubled
+  collision radii, and move at half their original speeds. Runna remains the
+  fastest type. Monsters and players block one another instead of walking
+  through each other, even during hit protection.
+  Monsters have a 50% chance to try to dodge an approaching trap, using a clear
+  route around it when space permits; narrow halls can prevent a dodge.
+  Monsters navigate around walls toward surviving players;
+  blasters can also fire a projectile every three seconds when they have a clear
+  shot. Contact or a projectile costs one life, followed by 1.5 seconds of
+  protection. Walls stop fire and projectiles. Defeated monsters return after
+  six seconds, at least ten units from every surviving player.
+  Zero lives eliminates a player and drops their carried defense; simultaneous
+  final eliminations draw. The solo rival collects and places the same defenses.
+  Uses the supplied flame gun, trap, regular monster, and Runna GLBs.
+  `assets/models/monster blaster.model` is an Asset Forge part layout, not a mesh;
+  its transforms and colors are reconstructed with primitive approximations,
+  like Chicken Blaster's arena. Export it as GLB for exact part geometry.
 - **Chicken Blaster:** A first-person last-chicken-standing battle against the
   solo rival or 2-8 players over LAN. Every chicken holds the supplied
   `assets/models/chicken blaster.glb`, with visible wings and hands gripping it.
@@ -188,6 +253,8 @@ Egg Battle synchronizes pickups, throws, jumps, HP, and eliminations on the serv
 eliminated players watch until the last chicken remains.
 Maze Race shares one server-generated layout and synchronizes monster patrols,
 sight, pursuits, and start resets. Only the first exit arrival wins.
+Monster Survival shares its generated rooms, monsters, defense ownership and
+placement, projectiles, lives, and last-survivor result through the server.
 
 Leave a waiting room to free your slot; if the host leaves, the room closes.
 If anyone disconnects during a round, it ends for everyone with a notice.
@@ -201,6 +268,7 @@ red-button minigame selection remains unchanged.
 - `server.js`: static game server, LAN room discovery, membership, and authoritative rounds.
 - `js/lan-client.js` and `js/lan-menu.js`: LAN connection, host/join menus, and live slots.
 - `js/lan-game.js`: 2-8 human-player rounds using the shared minigame rules and hazards.
+- `js/shop.js`: browser-saved inventory, equipment, and LAN coin rewards.
 - `js/lan-race-view.js`: buffered, render-only interpolation of LAN race poses.
 - `js/input.js`: keyboard state and focus handling.
 - `js/audio.js`: generated countdown, start, and chicken sounds.
@@ -210,6 +278,8 @@ red-button minigame selection remains unchanged.
   and rival dodge decisions; independent of the DOM and Three.js.
 - `js/maze.js`: procedural maze generation, pathfinding, monster vision and
   pursuit, capture resets, and first-arrival race rules, shared by solo and LAN.
+- `js/survival.js`: generated rooms, placeable defenses, monster navigation,
+  blaster projectiles, lives, and last-survivor rules, shared by solo and LAN.
 - `js/doors.js`: Door Dash course, secret door assignments, rival door guessing,
   monster chase, and win rules; independent of the DOM and Three.js.
 - `js/eggs.js`: Egg Heist pit spacing, pickup/drop, stealing, scoring, timer,

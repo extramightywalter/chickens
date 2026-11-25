@@ -201,6 +201,14 @@ export const LAN_BUTTON = {
   z: lanStructure.z,
   r: 1.2,
 };
+const shopStructure = lobbyStructures.find(({ type }) => type === "shop");
+// Bounds of the wooden counter in giant-building.glb, centered as in world.js.
+export const SHOP_DESK = {
+  x: shopStructure.x - 1.7752 * shopStructure.scale,
+  z: shopStructure.z + (-0.4352 - (-4.3300004 + 2.7248) / 2) * shopStructure.scale,
+  halfWidth: 0.5 * shopStructure.scale,
+  halfDepth: 2.16 * shopStructure.scale,
+};
 
 const LOBBY_WALL_THICKNESS = 0.2;
 function entrancePoint(structure) {

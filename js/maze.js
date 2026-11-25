@@ -13,24 +13,26 @@ const MONSTER_SPEED = SPEED * 0.38;
 const CHASE_SPEED = SPEED * 0.72;
 const count = MAZE_COLS * MAZE_COLS;
 
-export function mazePosition(cell) {
+export function mazePosition(cell, { cols = MAZE_COLS, size = MAZE_SIZE } = {}) {
+  const width = size / cols;
   return {
-    x: (cell % MAZE_COLS + 0.5) * MAZE_CELL - MAZE_SIZE / 2,
-    z: (Math.floor(cell / MAZE_COLS) + 0.5) * MAZE_CELL - MAZE_SIZE / 2,
+    x: (cell % cols + 0.5) * width - size / 2,
+    z: (Math.floor(cell / cols) + 0.5) * width - size / 2,
   };
 }
 
-export function mazeCellAt({ x, z }) {
-  const col = Math.max(0, Math.min(MAZE_COLS - 1, Math.floor((x + MAZE_SIZE / 2) / MAZE_CELL)));
-  const row = Math.max(0, Math.min(MAZE_COLS - 1, Math.floor((z + MAZE_SIZE / 2) / MAZE_CELL)));
-  return row * MAZE_COLS + col;
+export function mazeCellAt({ x, z }, { cols = MAZE_COLS, size = MAZE_SIZE } = {}) {
+  const width = size / cols;
+  const col = Math.max(0, Math.min(cols - 1, Math.floor((x + size / 2) / width)));
+  const row = Math.max(0, Math.min(cols - 1, Math.floor((z + size / 2) / width)));
+  return row * cols + col;
 }
 
-function neighbors(cell) {
-  const col = cell % MAZE_COLS, row = Math.floor(cell / MAZE_COLS);
+function neighbors(cell, cols = MAZE_COLS) {
+  const col = cell % cols, row = Math.floor(cell / cols);
   return [
-    ...(col > 0 ? [cell - 1] : []), ...(col < MAZE_COLS - 1 ? [cell + 1] : []),
-    ...(row > 0 ? [cell - MAZE_COLS] : []), ...(row < MAZE_COLS - 1 ? [cell + MAZE_COLS] : []),
+    ...(col > 0 ? [cell - 1] : []), ...(col < cols - 1 ? [cell + 1] : []),
+    ...(row > 0 ? [cell - cols] : []), ...(row < cols - 1 ? [cell + cols] : []),
   ];
 }
 
@@ -51,12 +53,15 @@ export function mazePath(maze, from, to) {
   return path.reverse();
 }
 
-export function generateMaze(random = Math.random) {
+export function generateMaze(random = Math.random, {
+  cols = MAZE_COLS, size = MAZE_SIZE, rooms = [],
+} = {}) {
+  const count = cols * cols, width = size / cols;
   const links = Array.from({ length: count }, () => []);
   const visited = new Set([0]), stack = [0];
   while (stack.length) {
     const cell = stack.at(-1);
-    const choices = neighbors(cell).filter(next => !visited.has(next));
+    const choices = neighbors(cell, cols).filter(next => !visited.has(next));
     if (!choices.length) {
       stack.pop();
       continue;
@@ -67,7 +72,7 @@ export function generateMaze(random = Math.random) {
     visited.add(next);
     stack.push(next);
   }
-  const shortcuts = links.flatMap((connected, cell) => neighbors(cell)
+  const shortcuts = links.flatMap((connected, cell) => neighbors(cell, cols)
     .filter(next => next > cell && !connected.includes(next))
     .map(next => [cell, next]));
   // Open extra passages throughout the maze so routes can split and rejoin.
@@ -78,6 +83,21 @@ export function generateMaze(random = Math.random) {
   for (const [cell, next] of shortcuts.slice(0, 48)) {
     links[cell].push(next);
     links[next].push(cell);
+  }
+  for (const room of rooms) {
+    for (let row = room.row; row < room.row + room.height; row++) {
+      for (let col = room.col; col < room.col + room.width; col++) {
+        const cell = row * cols + col;
+        const openings = [
+          ...(col + 1 < room.col + room.width ? [cell + 1] : []),
+          ...(row + 1 < room.row + room.height ? [cell + cols] : []),
+        ];
+        for (const next of openings) if (!links[cell].includes(next)) {
+          links[cell].push(next);
+          links[next].push(cell);
+        }
+      }
+    }
   }
   const maze = { links, walls: [], start: 0, exit: 0 };
   const queue = [0], distances = new Map([[0, 0]]);
@@ -95,21 +115,21 @@ export function generateMaze(random = Math.random) {
       distance >= Math.ceil(farthest * 0.8) && distance < farthest)
     .map(([cell]) => cell);
   maze.exit = exitCandidates[Math.floor(random() * exitCandidates.length)] ?? queue.at(-1);
-  const half = MAZE_WALL_THICKNESS / 2, limit = MAZE_SIZE / 2;
-  for (let row = 0; row <= MAZE_COLS; row++) {
-    for (let col = 0; col < MAZE_COLS; col++) {
-      const cell = row * MAZE_COLS + col;
-      if (row > 0 && row < MAZE_COLS && links[cell].includes(cell - MAZE_COLS)) continue;
-      const x = col * MAZE_CELL - limit, z = row * MAZE_CELL - limit;
-      maze.walls.push({ minX: x - half, maxX: x + MAZE_CELL + half, minZ: z - half, maxZ: z + half });
+  const half = MAZE_WALL_THICKNESS / 2, limit = size / 2;
+  for (let row = 0; row <= cols; row++) {
+    for (let col = 0; col < cols; col++) {
+      const cell = row * cols + col;
+      if (row > 0 && row < cols && links[cell].includes(cell - cols)) continue;
+      const x = col * width - limit, z = row * width - limit;
+      maze.walls.push({ minX: x - half, maxX: x + width + half, minZ: z - half, maxZ: z + half });
     }
   }
-  for (let col = 0; col <= MAZE_COLS; col++) {
-    for (let row = 0; row < MAZE_COLS; row++) {
-      const cell = row * MAZE_COLS + col;
-      if (col > 0 && col < MAZE_COLS && links[cell].includes(cell - 1)) continue;
-      const x = col * MAZE_CELL - limit, z = row * MAZE_CELL - limit;
-      maze.walls.push({ minX: x - half, maxX: x + half, minZ: z - half, maxZ: z + MAZE_CELL + half });
+  for (let col = 0; col <= cols; col++) {
+    for (let row = 0; row < cols; row++) {
+      const cell = row * cols + col;
+      if (col > 0 && col < cols && links[cell].includes(cell - 1)) continue;
+      const x = col * width - limit, z = row * width - limit;
+      maze.walls.push({ minX: x - half, maxX: x + half, minZ: z - half, maxZ: z + width + half });
     }
   }
   maze.key = links.map(cells => cells.join(",")).join("|");

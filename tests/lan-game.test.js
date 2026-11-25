@@ -19,6 +19,28 @@ function round(minigame, count = 8) {
   return createLanGame(minigame, Array.from({ length: count }, (_, n) => `player-${n}`), () => 0.1);
 }
 
+test("LAN places use progress, keep simultaneous winners tied, and record eliminations", () => {
+  const game = round("doors", 4);
+  game.update(3);
+  const [first, second, third, fourth] = game.racers;
+  Object.assign(fourth, { eliminated: true });
+  game.update(0);
+  Object.assign(first, { z: FINISH_Z });
+  Object.assign(second, { z: FINISH_Z - 5 });
+  Object.assign(third, { z: FINISH_Z - 10 });
+  game.update(0);
+  assert.deepEqual(game.state.places, [
+    { id: first.id, place: 1 }, { id: second.id, place: 2 },
+    { id: third.id, place: 3 }, { id: fourth.id, place: 4 },
+  ]);
+  const tied = round("doors", 4);
+  tied.update(3);
+  tied.racers[0].z = FINISH_Z;
+  tied.racers[1].z = FINISH_Z + 1;
+  tied.update(0);
+  assert.deepEqual(tied.state.places.slice(0, 2).map(entry => entry.place), [1, 1]);
+});
+
 test("the LAN button is inside the right side of the LAN building and reachable", () => {
   const building = lobbyStructures.find(({ type }) => type === "laness");
   assert.ok(LAN_BUTTON.x > building.x);

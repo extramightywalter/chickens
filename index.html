@@ -21,6 +21,19 @@
 </div>
 <div id="countdown" role="status" aria-live="polite"></div>
 <div id="msg"><span id="result">VICTORY</span><small>Press Enter to return to the button</small></div>
+<div id="shop-menu" class="menu-overlay" hidden>
+  <section class="menu-panel" role="dialog" aria-modal="true" aria-labelledby="shop-title">
+    <h1 id="shop-title">Chicken shop</h1>
+    <div class="shop-tabs" role="group" aria-label="Shop sections">
+      <button id="shop-tab" type="button">Shop</button>
+      <button id="stuff-tab" type="button">My stuff</button>
+    </div>
+    <p id="shop-coins"></p>
+    <p id="shop-status" role="status" aria-live="polite"></p>
+    <div id="shop-items" class="menu-options"></div>
+    <button id="shop-close" class="menu-cancel" type="button">Close</button>
+  </section>
+</div>
 <div id="game-menu" class="menu-overlay" hidden>
   <section class="menu-panel" role="dialog" aria-modal="true" aria-labelledby="menu-title">
     <h1 id="menu-title">Choose a minigame</h1>
@@ -36,6 +49,8 @@
       <button type="button" data-minigame="egg-battle">Egg Battle</button>
       <button type="button" data-minigame="maze">Maze Race</button>
       <button type="button" data-minigame="gun-arena">Chicken Blaster</button>
+      <button type="button" data-minigame="survival">Monster Survival</button>
+      <button type="button" data-minigame="cannon-race">Cannon Race</button>
       <button id="back-to-menu" type="button">Back</button>
     </div>
     <button id="close-menu" class="menu-cancel" type="button">Cancel</button>

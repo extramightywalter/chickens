@@ -10,12 +10,20 @@ import {
   START, TRACK_SURFACE_Y, WALL_H, checkpoints, cols, lobbyCellPosition, lobbyStructures, rows,
 } from "./track.js";
 import { DIVE_DURATION, PLAYER_COLORS, SPIN_DURATION } from "./lobby.js";
+import { removeShirtCollar, shortenShirtLettering } from "./shirt-geometry.js";
 import { EGG_LIMIT, EGG_MAP_SCALE, EGG_PIT_HALF_SIZE } from "./eggs.js";
 import { BATTLE_ARENA, battleWalls } from "./egg-battle.js";
 import { EYE_HEIGHT, FIRE_INTERVAL, gunArena, gunFloorHeight } from "./gun-arena.js";
 import {
   MAZE_CELL, MAZE_SIZE, MAZE_WALL_HEIGHT, mazeClearFraction, mazePosition,
 } from "./maze.js";
+import {
+  FLAME_HALF_ANGLE, FLAME_RANGE, SURVIVAL_MONSTER_SCALE, SURVIVAL_SIZE, parseMonsterBlaster,
+} from "./survival.js";
+import {
+  CANNON_FINISH_Z, CANNON_FOOTPRINT, CANNON_LAUNCH_Y, CANNON_REQUIRED_OVERLAP,
+  CANNON_SPACING, CANNON_STAGES, CANNON_TILE_SIZE, CANNON_WALL_OFFSET, cannonOverlap,
+} from "./cannon-race.js";
 
 const CHICKEN_YAW_OFFSET = Math.PI;
 const MONSTER_SCALE = 1.4;
@@ -400,6 +408,82 @@ export async function createWorld() {
     arena.add(cannon);
     return cannon;
   });
+  const cannonCourse = new THREE.Group();
+  scene.add(cannonCourse);
+  const tileFrame = new THREE.EdgesGeometry(new THREE.BoxGeometry(CANNON_TILE_SIZE, CANNON_TILE_SIZE, 0.24));
+  const passFrame = new THREE.LineBasicMaterial({ color: 0x24ffe0 });
+  const solidFrame = new THREE.LineBasicMaterial({ color: 0xff9c8b });
+  const tileBox = new THREE.BoxGeometry(CANNON_TILE_SIZE - 0.05, CANNON_TILE_SIZE - 0.05, 0.23);
+  const passTile = new THREE.MeshBasicMaterial({
+    color: 0x13c7ac, transparent: true, opacity: 0.16, depthWrite: false,
+  });
+  const solidTile = new THREE.MeshLambertMaterial({ color: 0xb93752, emissive: 0x4a0e23 });
+  const platformBox = new THREE.BoxGeometry(8.6, 0.55, 5.7);
+  const platformMaterial = new THREE.MeshLambertMaterial({ color: 0x314e64 });
+  const finishGeometry = new THREE.BoxGeometry(0.86, 0.035, 0.45);
+  const checkers = [0xffffff, 0x202630].map(color => new THREE.MeshBasicMaterial({ color }));
+  const aimMarker = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) =>
+      new THREE.Vector3(x * CANNON_FOOTPRINT / 2, y * CANNON_FOOTPRINT / 2, 0))),
+  new THREE.LineBasicMaterial({ depthTest: false }));
+  aimMarker.renderOrder = 10;
+  cannonCourse.add(aimMarker);
+  const laneMeshes = new Map();
+  let cannonLayout = "";
+
+  function renderCannonCourse(state, rival) {
+    const racers = state.multiplayer ? state.racers : [state, rival];
+    const layout = JSON.stringify([racers.map(racer => racer.cannonLane), state.cannonWalls]);
+    if (cannonLayout !== layout) {
+      cannonLayout = layout;
+      for (const lane of laneMeshes.values()) cannonCourse.remove(lane);
+      laneMeshes.clear();
+      for (const racer of racers) {
+        const lane = new THREE.Group();
+        lane.position.x = racer.cannonLane;
+        cannonCourse.add(lane);
+        laneMeshes.set(racer.cannonLane, lane);
+        for (let stage = 0; stage <= CANNON_STAGES; stage++) {
+          const z = stage * CANNON_SPACING;
+          const platform = new THREE.Mesh(platformBox, platformMaterial);
+          platform.position.set(0, -0.275, z - 1.5);
+          platform.receiveShadow = true;
+          lane.add(platform);
+          if (stage === CANNON_STAGES) break;
+          const cannon = cannons[0].clone(true);
+          cannon.position.set(0, 0, z);
+          cannon.scale.setScalar(1.45);
+          lane.add(cannon);
+          for (const tile of state.cannonWalls[stage]) {
+            const block = new THREE.Mesh(tileBox, tile.passable ? passTile : solidTile);
+            block.position.set(tile.x, tile.y, z + CANNON_WALL_OFFSET);
+            block.add(new THREE.LineSegments(tileFrame, tile.passable ? passFrame : solidFrame));
+            lane.add(block);
+          }
+        }
+        for (let i = 0; i < 10; i++) {
+          for (let row = 0; row < 2; row++) {
+            const square = new THREE.Mesh(finishGeometry, checkers[(i + row) % 2]);
+            square.position.set((i - 4.5) * 0.86, 0.02, CANNON_FINISH_Z + (row - 0.5) * 0.45);
+            lane.add(square);
+          }
+        }
+      }
+    }
+    aimMarker.visible = state.cannonPhase === "aim" && state.scene !== "finished";
+    if (!aimMarker.visible) return;
+    const overlap = cannonOverlap(state.cannonWalls[state.cannonStage], state.cannonAimX, state.cannonAimY);
+    aimMarker.material.color.setHex(overlap + 1e-9 >= CANNON_REQUIRED_OVERLAP ? 0xffffff : 0xffb137);
+    aimMarker.position.set(state.cannonLane + state.cannonAimX, state.cannonAimY,
+      state.cannonStage * CANNON_SPACING + CANNON_WALL_OFFSET - 0.14);
+  }
+
+  function poseCannonRacer(model, racer) {
+    model.visible = racer.cannonPhase !== "aim" && racer.cannonPhase !== "out";
+    model.position.y += racer.cannonY - (racer.cannonY > 0 || racer.eliminated ? CANNON_FOOTPRINT / 2 : 0);
+    model.rotation.y += racer.cannonSpin * 44;
+    if (racer.cannonPhase === "fall") model.rotation.x = Math.min(1.2, racer.cannonTime * 3);
+  }
   const { scene: pillowModel } = await loader.loadAsync(
     new URL("../pillow.glb", import.meta.url).href
   );
@@ -532,6 +616,130 @@ export async function createWorld() {
     mazeArena.add(group);
     return { group, arrow };
   });
+  const [flameAsset, trapAsset, runnaAsset, blasterResponse] = await Promise.all([
+    loader.loadAsync(new URL("../assets/models/flame gun.glb", import.meta.url).href),
+    loader.loadAsync(new URL("../assets/models/trap.glb", import.meta.url).href),
+    loader.loadAsync(new URL("../assets/models/runna monster.glb", import.meta.url).href),
+    fetch(new URL("../assets/models/monster blaster.model", import.meta.url)),
+  ]);
+  if (!blasterResponse.ok) throw new Error(`Could not load Monster Blaster (${blasterResponse.status}).`);
+  const monsterBlasterModel = new THREE.Group();
+  for (const piece of parseMonsterBlaster(await blasterResponse.text())) {
+    const barrel = piece.type.startsWith("blaster_");
+    const geometry = barrel ? new THREE.CylinderGeometry(0.24, 0.3, 0.9, 10) :
+      piece.type.includes("spike") ? new THREE.ConeGeometry(0.35, 1, 5) :
+      new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    if (barrel) geometry.rotateX(Math.PI / 2);
+    const mesh = new THREE.Mesh(geometry,
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(...piece.color) }));
+    mesh.position.fromArray(piece.position);
+    mesh.rotation.set(...piece.rotation.map(angle => angle * Math.PI / 180));
+    mesh.scale.fromArray(piece.scale);
+    monsterBlasterModel.add(mesh);
+  }
+  function survivalModel(source, height, yaw = 0) {
+    const model = source.clone(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const scale = height / (bounds.max.y - bounds.min.y);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const group = new THREE.Group();
+    model.scale.multiplyScalar(scale);
+    model.position.sub(new THREE.Vector3(center.x, bounds.min.y, center.z)).multiplyScalar(scale);
+    model.traverse(object => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.material = object.material.clone();
+      object.material.transparent = false;
+      object.material.opacity = 1;
+    });
+    group.rotation.y = yaw;
+    group.add(model);
+    return group;
+  }
+  const survivalModels = {
+    monster: survivalModel(monsterModel, 1.65 * SURVIVAL_MONSTER_SCALE, Math.PI),
+    runna: survivalModel(runnaAsset.scene, 1.6 * SURVIVAL_MONSTER_SCALE, Math.PI),
+    blaster: survivalModel(monsterBlasterModel, 1.7 * SURVIVAL_MONSTER_SCALE),
+    flame: survivalModel(flameAsset.scene, 0.85, Math.PI),
+    trap: survivalModel(trapAsset.scene, 0.45),
+  };
+  const survivalMonsterMeshes = new Map(), defenseMeshes = new Map(), projectileMeshes = new Map();
+  const flameGeometry = new THREE.ConeGeometry(0.24, 1, 7);
+  flameGeometry.rotateX(-Math.PI / 2);
+  const flameMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff8a16, transparent: true, opacity: 0.65, depthWrite: false,
+  });
+  const projectileGeometry = new THREE.SphereGeometry(0.16, 8, 6);
+  const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff3366 });
+  let survivalLayout = null;
+
+  function renderSurvival(state, rival) {
+    if (survivalLayout !== state.survivalMap.key) {
+      survivalLayout = state.survivalMap.key;
+      for (const meshes of [survivalMonsterMeshes, defenseMeshes, projectileMeshes]) {
+        for (const mesh of meshes.values()) mazeArena.remove(mesh);
+        meshes.clear();
+      }
+    }
+    for (const hazard of state.survivalMonsters) {
+      let mesh = survivalMonsterMeshes.get(hazard.id);
+      if (!mesh) {
+        mesh = new THREE.Group();
+        mesh.add(survivalModels[hazard.type].clone(true));
+        survivalMonsterMeshes.set(hazard.id, mesh);
+        mazeArena.add(mesh);
+      }
+      mesh.visible = hazard.respawnIn === 0;
+      mesh.position.set(hazard.x, Math.abs(Math.sin(hazard.walk)) * 0.08, hazard.z);
+      mesh.rotation.y = hazard.yaw;
+    }
+    const racers = state.multiplayer ? state.racers : [state, rival];
+    for (const item of state.defenses) {
+      let mesh = defenseMeshes.get(item.id);
+      if (!mesh) {
+        mesh = new THREE.Group();
+        mesh.add(survivalModels[item.type].clone(true));
+        mesh.userData.flames = item.type === "flame" ?
+          Array.from({ length: 5 }, () => {
+            const flame = new THREE.Mesh(flameGeometry, flameMaterial);
+            mesh.add(flame);
+            return flame;
+          }) : [];
+        defenseMeshes.set(item.id, mesh);
+        mazeArena.add(mesh);
+      }
+      const carrier = item.carrierId === null ? null : racers.find(racer => racer.id === item.carrierId);
+      const yaw = carrier ? carrier.yaw : item.yaw;
+      mesh.position.set(carrier ? carrier.x + Math.sin(yaw) * 0.7 : item.x,
+        carrier ? 1 : 0, carrier ? carrier.z + Math.cos(yaw) * 0.7 : item.z);
+      mesh.rotation.y = yaw;
+      mesh.userData.flames.forEach((flame, index) => {
+        flame.visible = !carrier && item.firing;
+        if (!flame.visible) return;
+        const angle = (index / 4 * 2 - 1) * FLAME_HALF_ANGLE;
+        const end = { x: item.x + Math.sin(yaw + angle) * FLAME_RANGE,
+          z: item.z + Math.cos(yaw + angle) * FLAME_RANGE };
+        const reach = FLAME_RANGE * mazeClearFraction(state.survivalMap.walls, item, end);
+        flame.rotation.y = angle;
+        flame.position.set(Math.sin(angle) * reach / 2, 0.65, Math.cos(angle) * reach / 2);
+        flame.scale.set(1 + Math.sin(state.survivalTime * 25 + index) * 0.15, 1, reach);
+      });
+    }
+    const active = new Set(state.survivalProjectiles.map(shot => shot.id));
+    for (const [id, mesh] of projectileMeshes) if (!active.has(id)) {
+      mazeArena.remove(mesh);
+      projectileMeshes.delete(id);
+    }
+    for (const shot of state.survivalProjectiles) {
+      let mesh = projectileMeshes.get(shot.id);
+      if (!mesh) {
+        mesh = new THREE.Mesh(projectileGeometry, projectileMaterial);
+        projectileMeshes.set(shot.id, mesh);
+        mazeArena.add(mesh);
+      }
+      mesh.position.set(shot.x, 0.9, shot.z);
+    }
+  }
   let lobbyStructure;
   await Promise.all(lobbyStructures.map(async structure => {
     const { scene: model } = await loader.loadAsync(
@@ -611,7 +819,59 @@ export async function createWorld() {
   const { scene: chickenModel } = await loader.loadAsync(
     new URL("../assets/models/chicken.glb", import.meta.url).href
   );
+  const outfitModels = Object.fromEntries(await Promise.all([
+    ["cap", "baseball hat.glb"], ["headphones", "headphones.glb"],
+    ["gamer", "gamer T.glb"], ["jersey", "pitchers jersey.glb"],
+  ].map(async ([id, file]) => [id, (await loader.loadAsync(
+    new URL(`../assets/models/${file}`, import.meta.url).href
+  )).scene])));
+  for (const [shirt, material] of [["gamer", "dark(Clone)"], ["jersey", "metalPurple(Clone)"]]) {
+    let foundLetters = false, foundCollar = false;
+    outfitModels[shirt].traverse(object => {
+      if (!object.isMesh || ![material, "metalPurple(Clone)"].includes(object.material.name)) return;
+      object.geometry = object.geometry.clone();
+      if (object.material.name === material) {
+        shortenShirtLettering(object.geometry, shirt);
+        foundLetters = true;
+      }
+      if (object.material.name === "metalPurple(Clone)") {
+        removeShirtCollar(object.geometry);
+        foundCollar = true;
+      }
+    });
+    if (!foundLetters || !foundCollar) throw new Error(`Could not find ${shirt} shirt material.`);
+  }
+  function addOutfits(model) {
+    function fit(source, width, bottom, centerZ, yaw, proportions = [1, 1, 1]) {
+      const group = new THREE.Group();
+      group.add(source.clone(true));
+      group.rotation.y = yaw;
+      let bounds = new THREE.Box3().setFromObject(group);
+      group.scale.setScalar(width / bounds.getSize(new THREE.Vector3()).x);
+      group.scale.multiply(new THREE.Vector3(...proportions));
+      bounds = new THREE.Box3().setFromObject(group);
+      const center = bounds.getCenter(new THREE.Vector3());
+      group.position.set(-center.x, bottom - bounds.min.y, centerZ - center.z);
+      return group;
+    }
+    const outfits = {
+      cap: fit(outfitModels.cap, 1.05, 2.02, -0.38, Math.PI / 2),
+      headphones: fit(outfitModels.headphones, 1.35, 1.52, -0.45, 0),
+      gamer: fit(outfitModels.gamer, 2.4, 1.05, 0.18, Math.PI / 2, [1, 0.6, 0.75]),
+      jersey: fit(outfitModels.jersey, 2.4, 1.05, 0.18, Math.PI / 2, [1, 0.6, 0.75]),
+    };
+    for (const outfit of Object.values(outfits)) {
+      outfit.visible = false;
+      model.add(outfit);
+    }
+    return appearance => {
+      for (const [id, outfit] of Object.entries(outfits)) {
+        outfit.visible = appearance?.hat === id || appearance?.clothing === id;
+      }
+    };
+  }
   const chicken = createChicken(chickenModel);
+  const dressPlayer = addOutfits(chicken);
   const playerMaterials = [];
   chicken.traverse(object => {
     if (!object.isMesh) return;
@@ -633,6 +893,7 @@ export async function createWorld() {
     scene.add(model);
     return model;
   });
+  const dressLan = lanChickens.map(addOutfits);
   const { scene: blasterModel } = await loader.loadAsync(
     new URL("../assets/models/chicken blaster.glb", import.meta.url).href
   );
@@ -708,7 +969,7 @@ export async function createWorld() {
       state.z - Math.cos(state.yaw) * 6.5
     );
     if (state.minigame === "eggs") positionEggCamera(camPos, state);
-    if (state.minigame === "maze") positionMazeCamera(camPos, state);
+    if (["maze", "survival"].includes(state.minigame)) positionMazeCamera(camPos, state);
   }
 
   function positionMazeCamera(position, state) {
@@ -716,7 +977,8 @@ export async function createWorld() {
       x: state.x - Math.sin(state.yaw) * 2.5,
       z: state.z - Math.cos(state.yaw) * 2.5,
     };
-    const fraction = Math.max(0, mazeClearFraction(state.maze.walls, state, desired, 0.18) - 0.025);
+    const map = state.minigame === "survival" ? state.survivalMap : state.maze;
+    const fraction = Math.max(0, mazeClearFraction(map.walls, state, desired, 0.18) - 0.025);
     position.set(state.x + (desired.x - state.x) * fraction, 3,
       state.z + (desired.z - state.z) * fraction);
   }
@@ -735,16 +997,21 @@ export async function createWorld() {
     const eggGame = state.minigame === "eggs";
     const battleGame = state.minigame === "egg-battle";
     const mazeGame = state.minigame === "maze";
+    const survivalGame = state.minigame === "survival";
+    const corridorGame = mazeGame || survivalGame;
     const gunGame = state.minigame === "gun-arena";
-    ground.visible = !trackGame && !eggGame && !gunGame;
+    const cannonGame = state.minigame === "cannon-race";
+    ground.visible = !trackGame && !eggGame && !gunGame && !cannonGame;
     track.visible = trackGame;
     lobby.visible = state.scene === "lobby";
     arena.visible = pillowGame;
     doorCourse.visible = doorGame;
     eggArena.visible = eggGame;
     battleArena.visible = battleGame;
-    mazeArena.visible = mazeGame;
+    mazeArena.visible = corridorGame;
     gunCourse.visible = gunGame;
+    cannonCourse.visible = cannonGame;
+    if (cannonGame) renderCannonCourse(state, rival);
     crosshair.hidden = !gunGame || state.scene === "finished" || state.eliminated;
     heldWeapon.visible = gunGame && !state.eliminated;
     setGunArmColor(heldWeapon, state.color);
@@ -771,22 +1038,28 @@ export async function createWorld() {
           new THREE.Vector3(bullet.vx, bullet.vy, bullet.vz).normalize());
       }
     }
-    if (mazeGame) {
-      const exit = mazePosition(state.maze.exit), start = mazePosition(state.maze.start);
-      mazeExit.position.set(exit.x, 0.07, exit.z);
-      mazeExitSign.position.set(exit.x, 2.6, exit.z);
+    if (corridorGame) {
+      const map = survivalGame ? state.survivalMap : state.maze;
+      mazeFloor.scale.setScalar(survivalGame ? SURVIVAL_SIZE / MAZE_SIZE : 1);
+      mazeExit.visible = mazeExitSign.visible = mazeGame;
+      const start = survivalGame ? { x: 0, z: 0 } : mazePosition(map.start);
+      if (mazeGame) {
+        const exit = mazePosition(map.exit);
+        mazeExit.position.set(exit.x, 0.07, exit.z);
+        mazeExitSign.position.set(exit.x, 2.6, exit.z);
+      }
       mazeStart.position.set(start.x, 0.06, start.z);
-      if (mazeKey !== state.maze.key) {
-        mazeKey = state.maze.key;
+      if (mazeKey !== map.key) {
+        mazeKey = map.key;
         if (mazeWallMesh) {
           mazeArena.remove(mazeWallMesh);
           mazeWallMesh.dispose();
         }
         mazeWallMesh = new THREE.InstancedMesh(
-          mazeWallGeometry, mazeWallMaterial, state.maze.walls.length
+          mazeWallGeometry, mazeWallMaterial, map.walls.length
         );
         const transform = new THREE.Object3D();
-        state.maze.walls.forEach((wall, index) => {
+        map.walls.forEach((wall, index) => {
           transform.position.set((wall.minX + wall.maxX) / 2, MAZE_WALL_HEIGHT / 2,
             (wall.minZ + wall.maxZ) / 2);
           transform.scale.set(wall.maxX - wall.minX, MAZE_WALL_HEIGHT, wall.maxZ - wall.minZ);
@@ -798,13 +1071,17 @@ export async function createWorld() {
         mazeArena.add(mazeWallMesh);
       }
       mazeMonsterMeshes.forEach(({ group, arrow }, index) => {
-        const hazard = state.mazeMonsters[index];
+        const hazard = mazeGame ? state.mazeMonsters[index] : null;
         group.visible = Boolean(hazard);
         if (!hazard) return;
         group.position.set(hazard.x, Math.abs(Math.sin(hazard.walk)) * 0.1, hazard.z);
         group.rotation.y = hazard.yaw;
         arrow.material.color.setHex(hazard.lastSeen === null ? 0xffbb33 : 0xff3333);
       });
+      for (const meshes of [survivalMonsterMeshes, defenseMeshes, projectileMeshes]) {
+        for (const mesh of meshes.values()) mesh.visible = survivalGame;
+      }
+      if (survivalGame) renderSurvival(state, rival);
     }
     if (battleGame) {
       while (battleEggMeshes.length < state.battleEggs.length) {
@@ -881,9 +1158,10 @@ export async function createWorld() {
     const rivalTrackY = trackGame && !state.multiplayer ?
       trackChickenY("rival", rival.walk, rival.eliminated, dt) : null;
     rivalChicken.visible = state.scene !== "lobby" && !state.multiplayer &&
-      (!(battleGame || gunGame) || !rival.eliminated) &&
+      (!(battleGame || gunGame || survivalGame) || !rival.eliminated) &&
       (!trackGame || !rival.eliminated || rivalTrackY !== null);
     setChickenColor(chicken, state.color);
+    dressPlayer(state.appearance);
     setChickenColor(rivalChicken, state.multiplayer ? null : rival.color);
     if (!state.multiplayer) setGunArmColor(rivalWeapon, rival.color);
     chicken.visible = !gunGame && (!state.eliminated || (trackGame && playerTrackY !== null));
@@ -894,6 +1172,7 @@ export async function createWorld() {
         trackChickenY(`lan-${racer.id}`, racer.walk, racer.eliminated, dt) : null;
       if (racer) {
         setChickenColor(model, racer.color);
+        dressLan[index](racer.appearance);
         setGunArmColor(lanWeapons[index], racer.color);
       }
       model.visible = Boolean(racer && (!racer.eliminated || (trackGame && trackY !== null)));
@@ -906,6 +1185,7 @@ export async function createWorld() {
         racer.yaw + CHICKEN_YAW_OFFSET + spinPose(racer),
         (racer.controls.forward || (gunGame && racer.controls.strafe)) &&
           !racer.eliminated ? Math.sin(racer.walk) * 0.06 : 0);
+      if (cannonGame) poseCannonRacer(model, racer);
     });
     const activePillows = new Set(state.pillows.map(pillow => pillow.id));
     for (const [id, mesh] of pillowMeshes) {
@@ -934,7 +1214,7 @@ export async function createWorld() {
     chicken.rotation.set(-divePose(state) * 0.75,
       state.yaw + CHICKEN_YAW_OFFSET + spinPose(state),
       moving ? Math.sin(state.walk) * 0.06 : 0);
-    const rivalMoving = ["track", "pillows", "doors", "eggs", "egg-battle", "maze", "gun-arena"].includes(state.scene) &&
+    const rivalMoving = ["track", "pillows", "doors", "eggs", "egg-battle", "maze", "gun-arena", "survival", "cannon-race"].includes(state.scene) &&
       dt > 0 && (rival.controls.forward !== 0 || (gunGame && rival.controls.strafe !== 0));
     rivalChicken.position.set(rival.x, trackGame ? rivalTrackY ?? 0 :
       (eggGame ? eggFloorY(rival.x, rival.z) : gunGame ? gunFloorHeight(rival.x, rival.z) : 0) +
@@ -942,6 +1222,11 @@ export async function createWorld() {
     rivalChicken.rotation.y = rival.yaw + CHICKEN_YAW_OFFSET;
     rivalChicken.position.y += battleGame ? rival.jumpHeight : 0;
     rivalChicken.rotation.z = rivalMoving ? Math.sin(rival.walk) * 0.06 : 0;
+    rivalChicken.rotation.x = 0;
+    if (cannonGame) {
+      poseCannonRacer(chicken, state);
+      if (!state.multiplayer) poseCannonRacer(rivalChicken, rival);
+    }
 
     const back = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
     const target = new THREE.Vector3(state.x, 0, state.z).addScaledVector(back, 6.5);
@@ -953,13 +1238,15 @@ export async function createWorld() {
       target.set(0, height, height * 0.55);
     }
     if (eggGame) positionEggCamera(target, state);
-    if (mazeGame) positionMazeCamera(target, state);
+    if (corridorGame) positionMazeCamera(target, state);
     if (gunGame) target.set(state.x, gunFloorHeight(state.x, state.z) + EYE_HEIGHT, state.z);
+    if (cannonGame) target.set(state.x + 2.3, Math.max(4.4, state.cannonY + 2), state.z - 7);
     // Keep the chase camera directly behind the player in these arenas.
-    if (doorGame || eggGame || battleGame || mazeGame || gunGame) camPos.copy(target);
+    if (doorGame || eggGame || battleGame || corridorGame || gunGame) camPos.copy(target);
     else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
     camera.position.copy(camPos);
-    const fadePlayer = mazeGame && Math.hypot(camPos.x - state.x, camPos.z - state.z) < 1.5;
+    const fadePlayer = (corridorGame && Math.hypot(camPos.x - state.x, camPos.z - state.z) < 1.5) ||
+      (survivalGame && state.invulnerable > 0 && Math.sin(state.survivalTime * 30) > 0);
     for (const original of playerMaterials) {
       const { material } = original;
       const transparent = fadePlayer || original.transparent;
@@ -972,6 +1259,7 @@ export async function createWorld() {
     }
     if (gunGame) camera.lookAt(state.x + Math.sin(state.yaw) * Math.cos(state.pitch),
       target.y + Math.sin(state.pitch), state.z + Math.cos(state.yaw) * Math.cos(state.pitch));
+    else if (cannonGame) camera.lookAt(state.cannonLane, 2, state.z + 6);
     else if (pillowGame) camera.lookAt(0, 0, 0);
     else {
       focusTarget.set(state.x, followHeight + 1.6, state.z);
@@ -983,8 +1271,8 @@ export async function createWorld() {
       } else cameraFocus.copy(focusTarget);
       camera.lookAt(cameraFocus);
     }
-    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || mazeGame || gunGame || state.multiplayer ? "none" : "flex";
-    if (state.scene !== "lobby" && !pillowGame && !eggGame && !mazeGame && !gunGame && !state.multiplayer) {
+    rivalIndicator.style.display = state.scene === "lobby" || pillowGame || eggGame || corridorGame || gunGame || cannonGame || state.multiplayer ? "none" : "flex";
+    if (rivalIndicator.style.display !== "none") {
       const direction = new THREE.Vector3(rival.x, 1.2, rival.z).sub(camera.position);
       camera.getWorldDirection(cameraDirection);
       const behind = direction.dot(cameraDirection) < 0;

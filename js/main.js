@@ -7,8 +7,19 @@ import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
 import { createLanMenu } from "./lan-menu.js";
 import { createLanRaceView } from "./lan-race-view.js";
 import { BLASTER_HP } from "./gun-arena.js";
+import { createShop, ITEMS, placeReward } from "./shop.js";
+import {
+  CANNON_REQUIRED_OVERLAP, CANNON_SPIN_WINDOW, CANNON_STAGES, cannonOverlap, cannonTimeToWall,
+} from "./cannon-race.js";
 
 const game = createGame();
+let shop;
+try {
+  shop = createShop(localStorage);
+} catch (error) {
+  document.getElementById("hud").textContent = `Could not load shop data: ${error.message}`;
+  throw error;
+}
 const world = await createWorld();
 const sounds = createSoundEffects();
 const { state, rival } = game;
@@ -22,8 +33,49 @@ const minigameOptions = document.getElementById("minigame-options");
 const menuTitle = document.getElementById("menu-title");
 const abilityHelp = " | E spin (2s, half speed, 3s cooldown) | Space dive (3s cooldown)";
 let menuStep = null;
+let shopPage = "shop";
+let roundReward = null;
+const shopMenu = document.getElementById("shop-menu");
+const shopItems = document.getElementById("shop-items");
+const shopStatus = document.getElementById("shop-status");
+const shopTab = document.getElementById("shop-tab");
+const stuffTab = document.getElementById("stuff-tab");
+
+function renderShop() {
+  document.getElementById("shop-coins").textContent = `Coins: ${shop.coins}`;
+  shopTab.setAttribute("aria-pressed", String(shopPage === "shop"));
+  stuffTab.setAttribute("aria-pressed", String(shopPage === "stuff"));
+  shopItems.replaceChildren();
+  for (const [id, item] of Object.entries(ITEMS)) {
+    if (shopPage === "shop" ? item.price === undefined : !shop.owned.includes(id)) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    const equipped = shop.appearance[item.type] === id;
+    button.textContent = shopPage === "shop"
+      ? `${item.name} (${item.type}) - ${shop.owned.includes(id) ? "Owned" : `${item.price} coins`}`
+      : `${item.name} (${item.type})${equipped ? " - Equipped" : ""}`;
+    if (shopPage === "shop") button.disabled = shop.owned.includes(id) || shop.coins < item.price;
+    button.addEventListener("click", () => {
+      try {
+        if (shopPage === "shop") {
+          if (shop.buy(id)) shopStatus.textContent = `${item.name} added to My stuff.`;
+        } else if (shop.equip(id)) shopStatus.textContent = `${item.name} ${equipped && item.type !== "color" ? "removed" : "equipped"}.`;
+        renderShop();
+      } catch (error) {
+        shopStatus.textContent = `Could not save your shop data: ${error.message}`;
+      }
+    });
+    shopItems.append(button);
+  }
+}
+
+function closeShop() { shopMenu.hidden = true; input.clear(); }
+shopTab.addEventListener("click", () => { shopPage = "shop"; shopStatus.textContent = ""; renderShop(); });
+stuffTab.addEventListener("click", () => { shopPage = "stuff"; shopStatus.textContent = ""; renderShop(); });
+document.getElementById("shop-close").addEventListener("click", closeShop);
 const lanRaceView = createLanRaceView();
 const lanMenu = createLanMenu({
+  getAppearance: () => shop.appearance,
   choices: Object.fromEntries([...minigameOptions.querySelectorAll("[data-minigame]")]
     .map(button => [button.dataset.minigame, button.textContent])),
   onOpen() { input.clear(); },
@@ -35,7 +87,7 @@ const lanMenu = createLanMenu({
     world.resetCamera(state);
   },
   onRound(round, playerId, first) {
-    if (first) lanRaceView.reset();
+    if (first) { lanRaceView.reset(); roundReward = null; }
     if (round.state.minigame === "track") lanRaceView.push(round.racers, performance.now());
     const local = round.racers.find(racer => racer.id === playerId);
     Object.assign(state, round.state, local, {
@@ -43,6 +95,19 @@ const lanMenu = createLanMenu({
       playerWon: round.state.winnerIds.length === 0 ? null : round.state.winnerIds.includes(playerId),
     });
     Object.assign(rival, round.racers.find(racer => racer.id !== playerId));
+    if (round.state.scene === "finished" && roundReward === null) {
+      const place = round.state.places?.find(entry => entry.id === playerId)?.place;
+      if (round.state.roundId && place && round.state.winnerIds.length > 0 &&
+          round.state.winnerIds.length < round.racers.length) {
+        const coins = placeReward(round.racers.length, place);
+        try {
+          const credited = shop.reward(round.state.roundId, coins);
+          roundReward = `Place ${place}: ${coins} coin${coins === 1 ? "" : "s"} ${credited ? "earned" : "already credited"}`;
+        } catch (error) {
+          roundReward = `Could not save coins: ${error.message}`;
+        }
+      } else roundReward = "Draw: no coins awarded";
+    }
     if (first) {
       input.clear();
       world.resetCamera(state);
@@ -74,6 +139,8 @@ function startMinigame(selection) {
   else if (selection === "egg-battle") game.enterEggBattle();
   else if (selection === "maze") game.enterMaze();
   else if (selection === "gun-arena") game.enterGunArena();
+  else if (selection === "survival") game.enterSurvival();
+  else if (selection === "cannon-race") game.enterCannonRace();
   else game.enterPillows();
   closeMenu();
   input.clear();
@@ -102,6 +169,10 @@ document.getElementById("back-to-menu").addEventListener("click", () => {
 document.getElementById("close-menu").addEventListener("click", closeMenu);
 
 const input = createInput(key => {
+  if (!shopMenu.hidden) {
+    if (key === "escape") closeShop();
+    return;
+  }
   if (lanMenu.isOpen) {
     if (key === "escape") lanMenu.escape();
     return;
@@ -123,7 +194,14 @@ const input = createInput(key => {
     world.resetCamera(state);
   } else if (state.scene === "lobby" && key === "e") {
     sounds.unlock();
-    if (game.nearLanButton()) lanMenu.open();
+    if (game.nearShop()) {
+      shopPage = "shop";
+      shopStatus.textContent = "";
+      renderShop();
+      shopMenu.hidden = false;
+      input.clear();
+      shopTab.focus();
+    } else if (game.nearLanButton()) lanMenu.open();
     else if (game.nearButton()) openMenu();
   }
 }, (dx, dy) => {
@@ -152,8 +230,35 @@ function raceProgress(racer) {
     (checkpoints.length - 1) * 100)}%`;
 }
 
+function cannonHud() {
+  const progress = racer => racer.eliminated ? "OUT" : `${racer.cannonStage}/${CANNON_STAGES} walls`;
+  const standings = state.multiplayer
+    ? state.racers.map(racer => `P${racer.number}${racer.id === state.id ? " (you)" : ""}: ${progress(racer)}`).join(" | ")
+    : `You: ${progress(state)} | Rival: ${progress(rival)}`;
+  let hint;
+  if (state.eliminated) hint = "Eliminated - watching until the race ends";
+  else if (state.cannonPhase === "aim") {
+    const coverage = cannonOverlap(state.cannonWalls[state.cannonStage], state.cannonAimX, state.cannonAimY);
+    const safe = coverage + 1e-9 >= CANNON_REQUIRED_OVERLAP;
+    const percent = safe ? Math.round(coverage * 100) : Math.floor(coverage * 100);
+    hint = `WASD / arrows aim | ${percent}% on teal (75% needed) | Space launch`;
+  } else if (state.cannonPhase === "flight") {
+    const remaining = cannonTimeToWall(state);
+    hint = state.cannonSpin > remaining ? "Spinning!" :
+      remaining < CANNON_SPIN_WINDOW ? "SPIN NOW! E or Space" : "Wait until just before the wall, then press E or Space to spin";
+  } else if (state.cannonPhase === "land") hint = "Wall cleared - landing";
+  else hint = state.cannonStage === CANNON_STAGES ? "Run across the checkered finish line!" :
+    "WASD / arrows to walk into the cannon";
+  return `${state.multiplayer ? "LAN " : ""}CANNON RACE | ${standings} | ${hint}`;
+}
+
 function updateUI() {
-  const controlsHelp = state.minigame === "gun-arena" ?
+  const defenseHelp = state.carryingDefenseId !== null
+    ? `Carrying ${state.defenses.find(item => item.id === state.carryingDefenseId)?.type === "flame" ? "flame gun" : "trap"} (slower movement) - E to place facing forward`
+    : "E to pick up a flame gun or trap";
+  const controlsHelp = state.minigame === "survival" ?
+    ` | ${defenseHelp} | Guns fire at nearby monsters | Traps and fire hurt you too${!state.eliminated && state.invulnerable > 0 ? " | HIT - briefly protected" : ""}${state.survivalNotice ? ` | ${state.survivalNotice}` : ""}` :
+    state.minigame === "gun-arena" ?
     ` | Click to aim with mouse | Click / hold Space to shoot | ${BLASTER_HP} HP, last chicken standing` :
     state.minigame === "egg-battle" ?
     " | E pick up egg | Space throw egg / jump when empty-handed" : state.minigame === "eggs" ?
@@ -162,13 +267,15 @@ function updateUI() {
   hud.textContent = state.scene === "lobby"
     ? `W/S move | A/D turn | ${
       game.nearLanButton() ? "Press E to host or join a LAN game" :
+      game.nearShop() ? "Press E to open the shop" :
       game.nearButton() ? "Press E to choose a minigame" :
         "Red button: minigames | Blue button inside the right side of LAN: host or join"
     }`
+    : state.minigame === "cannon-race" ? cannonHud()
     : state.multiplayer
       ? `LAN ${state.minigame.toUpperCase()} | You: Player ${state.number} | ${
         state.racers.map(racer => `P${racer.number}: ${racer.eliminated ? "OUT" :
-          ["pillows", "egg-battle", "gun-arena"].includes(state.minigame) ?
+          ["pillows", "egg-battle", "gun-arena", "survival"].includes(state.minigame) ?
             `${racer.lives}/${state.minigame === "gun-arena" ? BLASTER_HP : 3} HP` :
           state.minigame === "doors" ? `${doorsPassed(racer)}/${DOOR_COUNT} doors` :
           state.minigame === "eggs" ? `${racer.eggScore} eggs` :
@@ -176,6 +283,8 @@ function updateUI() {
             `${racer.mazeRestarts}/5 catches`) :
             raceProgress(racer)}${racer.stunTimer > 0 ? " (stunned)" : ""}`).join(" | ")
       }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | ${state.minigame === "gun-arena" ? "A/D or Left/Right strafe" : "A/D turn"}${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+    : state.minigame === "survival"
+      ? `MONSTER SURVIVAL | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Last player standing wins | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | OUT" : ""}`
     : state.minigame === "gun-arena"
       ? `CHICKEN BLASTER | You: ${state.lives}/${BLASTER_HP} HP | Rival: ${rival.lives}/${BLASTER_HP} HP | W/S move | A/D or Left/Right strafe${controlsHelp}`
     : state.minigame === "maze"
@@ -206,7 +315,7 @@ function updateUI() {
         `PLAYER ${state.racers.find(racer => racer.id === state.winnerIds[0]).number} WINS!`;
   }
   message.querySelector("small").textContent = state.multiplayer ?
-    "Press Enter to leave the LAN game" : "Press Enter to return to the button";
+    `${roundReward ?? ""} | Press Enter to leave the LAN game` : "Press Enter to return to the button";
   message.style.display = state.scene === "finished" ? "flex" : "none";
 }
 
@@ -216,7 +325,7 @@ let last = performance.now();
 function frame(now) {
   const elapsed = (now - last) / 1000;
   last = now;
-  const keys = menuStep === null && !lanMenu.isOpen ? input.keys : {};
+  const keys = menuStep === null && !lanMenu.isOpen && shopMenu.hidden ? input.keys : {};
   lanMenu.setKeys(keys);
   const { moving, dt } = lanMenu.active ?
     { moving: !state.eliminated &&
@@ -239,6 +348,10 @@ function frame(now) {
   }
   updateUI();
   let renderState = state;
+  if (!state.multiplayer) {
+    state.appearance = shop.appearance;
+    state.color = ITEMS[state.appearance.color].color;
+  }
   if (lanMenu.active && state.minigame === "track") {
     const racers = lanRaceView.sample(now);
     const local = racers?.find(racer => racer.id === state.id);

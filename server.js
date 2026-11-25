@@ -6,6 +6,7 @@ import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MINIGAMES } from "./js/pillows.js";
 import { createLanGame } from "./js/lan-game.js";
+import { ITEMS, validAppearance } from "./js/shop.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const types = {
@@ -112,6 +113,8 @@ export function createLanServer() {
       const player = players.get(data.playerId);
       let error;
       if (!player || player.token !== data.token) error = "LAN connection expired. Reopen the LAN menu.";
+      else if (["host", "join"].includes(data.action) &&
+        data.appearance !== undefined && !validAppearance(data.appearance)) error = "Invalid appearance.";
       else if (data.action === "host") {
         if (player.roomId) error = "Leave your current game first.";
         else if (!Number.isInteger(data.slots) || data.slots < 2 || data.slots > 8) {
@@ -124,6 +127,7 @@ export function createLanServer() {
           };
           rooms.set(room.id, room);
           player.roomId = room.id;
+          player.appearance = data.appearance;
         }
       } else if (data.action === "join") {
         const room = rooms.get(data.roomId);
@@ -132,10 +136,19 @@ export function createLanServer() {
         else {
           room.members.push(data.playerId);
           player.roomId = room.id;
+          player.appearance = data.appearance;
           if (room.members.length === room.slots) {
             const selection = room.selection === "random" ?
               MINIGAMES[Math.floor(Math.random() * MINIGAMES.length)] : room.selection;
             room.game = createLanGame(selection, room.members);
+            room.game.state.roundId = randomUUID();
+            for (const racer of room.game.racers) {
+              const appearance = players.get(racer.id).appearance;
+              if (appearance) {
+                racer.appearance = appearance;
+                racer.color = ITEMS[appearance.color].color;
+              }
+            }
             for (const id of room.members) players.get(id).keys = {};
           }
         }

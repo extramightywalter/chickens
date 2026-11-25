@@ -1,0 +1,15 @@
+# Made using Asset Forge (2.5.3)
+
+:materials
+
+[name:_defaultMat;color:RGBA(1.000, 0.000, 0.000, 1.000);scale:(1.00, 1.00);shader:Default;mapping:0;valueA:0.35;valueB:0.25;]
+[name:bricks;color:RGBA(0.000, 0.000, 0.000, 1.000);scale:(1.00, 1.00);shader:Default;mapping:0;valueA:0.35;valueB:0;]
+[name:foliage;color:RGBA(0.000, 0.655, 0.486, 1.000);scale:(1.00, 1.00);shader:Default;mapping:0;valueA:0.35;valueB:0;]
+
+:models
+
+[name:;collection:Primitives;type:torus_half%;position:(0.3875, 0.9000, -0.8000);rotation:(90.0000, 0.0000, 0.0000);scale:(1.1712, 1.0000, 1.0000);group:;locked:False;hidden:False;materials:bricks;]
+[name:;collection:Primitives;type:sphere_half;position:(0.7869, 0.2200, -0.7060);rotation:(0.0000, 0.0000, 270.0000);scale:(0.6400, 0.5400, 0.5880);group:;locked:False;hidden:False;materials:bricks;]
+[name:;collection:Primitives;type:torus%;position:(0.8409, 0.2200, -0.7060);rotation:(0.0000, 0.0000, 90.0000);scale:(0.6400, 0.5400, 0.5880);group:;locked:False;hidden:False;materials:_defaultMat;]
+[name:;collection:Primitives;type:sphere_half;position:(-0.0470, 0.2200, -0.7060);rotation:(0.0000, 180.0000, 270.0000);scale:(0.6400, 0.5400, 0.5880);group:;locked:False;hidden:False;materials:bricks;]
+[name:;collection:Primitives;type:torus%;position:(-0.1010, 0.2200, -0.7060);rotation:(0.0000, 180.0000, 90.0000);scale:(0.6400, 0.5400, 0.5880);group:;locked:False;hidden:False;materials:_defaultMat;]
