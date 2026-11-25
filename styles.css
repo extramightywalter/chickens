@@ -12,8 +12,8 @@ canvas { display: block; }
   text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 2;
 }
 #rival-indicator .avatar {
-  display: block; width: 54px; height: 54px; flex: none;
-  padding: 3px; border-radius: 50%; background: rgba(0,0,0,.7);
+  display: block; width: 54px; height: 54px; flex: none; object-fit: cover;
+  padding: 3px; border-radius: 50%; background: rgba(0,0,0,.7); box-sizing: border-box;
   border: 2px solid #e53935;
 }
 #rival-indicator .label {
