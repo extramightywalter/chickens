@@ -18,7 +18,8 @@ import {
   MAZE_CELL, MAZE_SIZE, MAZE_WALL_HEIGHT, mazeClearFraction, mazePosition,
 } from "./maze.js";
 import {
-  FLAME_HALF_ANGLE, FLAME_RANGE, SURVIVAL_MONSTER_SCALE, SURVIVAL_SIZE, parseMonsterBlaster,
+  FLAME_HALF_ANGLE, FLAME_RANGE, SURVIVAL_MONSTER_SCALE, SURVIVAL_SIZE,
+  monsterBlasterGeometryKind, parseMonsterBlaster,
 } from "./survival.js";
 import {
   CANNON_FINISH_Z, CANNON_FOOTPRINT, CANNON_LAUNCH_Y, CANNON_REQUIRED_OVERLAP,
@@ -625,11 +626,15 @@ export async function createWorld() {
   if (!blasterResponse.ok) throw new Error(`Could not load Monster Blaster (${blasterResponse.status}).`);
   const monsterBlasterModel = new THREE.Group();
   for (const piece of parseMonsterBlaster(await blasterResponse.text())) {
-    const barrel = piece.type.startsWith("blaster_");
-    const geometry = barrel ? new THREE.CylinderGeometry(0.24, 0.3, 0.9, 10) :
-      piece.type.includes("spike") ? new THREE.ConeGeometry(0.35, 1, 5) :
+    const kind = monsterBlasterGeometryKind(piece.type);
+    const geometry = kind === "barrel" ? new THREE.CylinderGeometry(0.24, 0.3, 0.9, 12) :
+      kind === "spike" ? new THREE.ConeGeometry(0.35, 1, 8) :
+      kind === "leg" ? new THREE.CapsuleGeometry(0.22, 0.56, 4, 8) :
+      kind === "ring" ? new THREE.TorusGeometry(0.34, 0.12, 6, 12) :
+      kind === "body" ? new THREE.SphereGeometry(0.55, 10, 8) :
       new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    if (barrel) geometry.rotateX(Math.PI / 2);
+    if (kind === "barrel") geometry.rotateX(Math.PI / 2);
+    if (kind === "ring") geometry.rotateY(Math.PI / 2);
     const mesh = new THREE.Mesh(geometry,
       new THREE.MeshLambertMaterial({ color: new THREE.Color(...piece.color) }));
     mesh.position.fromArray(piece.position);
@@ -649,8 +654,6 @@ export async function createWorld() {
       if (!object.isMesh) return;
       object.castShadow = true;
       object.material = object.material.clone();
-      object.material.transparent = false;
-      object.material.opacity = 1;
     });
     group.rotation.y = yaw;
     group.add(model);

@@ -52,6 +52,16 @@ export function parseMonsterBlaster(text) {
   return pieces;
 }
 
+export function monsterBlasterGeometryKind(type) {
+  if (type.startsWith("blaster_")) return "barrel";
+  if (type.includes("spike")) return "spike";
+  if (type === "leg") return "leg";
+  if (type === "body_point_ring") return "ring";
+  if (type.startsWith("leg_base_large")) return "body";
+  if (type.startsWith("leg_base") || type === "body_half_long") return "block";
+  return "block";
+}
+
 function distance(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
 
 function segmentHit(from, to, target, radius) {
