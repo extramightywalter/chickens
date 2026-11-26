@@ -14,6 +14,18 @@ import {
   touchesFinishLanding,
 } from "../js/track.js";
 
+test("starting a local round creates one stable reward ID and later rounds get distinct IDs", () => {
+  const game = createRandomGame();
+  game.enterTrack();
+  assert.match(game.state.roundId, /^solo-\d+$/);
+  const first = game.state.roundId;
+  game.update(3);
+  assert.equal(game.state.roundId, first);
+  game.enterPillows();
+  assert.match(game.state.roundId, /^solo-\d+$/);
+  assert.notEqual(game.state.roundId, first);
+});
+
 test("touching the model's red tile under the finish arch wins the local race", () => {
   for (const winner of ["player", "rival"]) {
     const game = createGame();

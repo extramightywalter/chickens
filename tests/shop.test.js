@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createShop, ITEMS, placeReward, validAppearance } from "../js/shop.js";
+import { createShop, ITEMS, outcomeReward, placeReward, validAppearance } from "../js/shop.js";
 import { createGame } from "../js/lobby.js";
 import { SHOP_DESK } from "../js/track.js";
 
@@ -53,6 +53,10 @@ test("rewards follow human-player counts and appearance values are validated", (
   assert.deepEqual([1, 2, 3, 4].map(place => placeReward(4, place)), [3, 2, 1, 0]);
   assert.equal(placeReward(8, 3), 1);
   assert.equal(placeReward(4, 0), 0);
+  assert.equal(outcomeReward(2, 1, 1, 2), 1);
+  assert.equal(outcomeReward(3, 1, 2, 3), 2);
+  assert.equal(outcomeReward(2, 1, 0, 2), 0);
+  assert.equal(outcomeReward(2, 1, 2, 2), 0);
   assert.equal(validAppearance({ color: "blue", hat: "headphones", clothing: null }), true);
   assert.equal(validAppearance({ color: "cap", hat: null, clothing: null }), false);
   assert.equal(ITEMS.orange.price, 5);

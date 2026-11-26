@@ -121,6 +121,7 @@ export function createGame({ random = Math.random } = {}) {
   const cannonRace = createCannonRace(random);
   let previousActionKeys = { e: false, space: false };
   let driver;
+  let roundSequence = 0;
 
   function setScene(scene, spawn, yaw) {
     Object.assign(state, {
@@ -140,6 +141,7 @@ export function createGame({ random = Math.random } = {}) {
       carryingDefenseId: null, invulnerable: 0, survivalNotice: "",
       bullets: [], pitch: 0, fireCooldown: 0, shotsFired: 0,
       multiplayer: false, racers: [], winnerIds: [], id: null, eliminated: false,
+      roundId: scene === "countdown" ? `solo-${++roundSequence}` : null,
     });
     Object.assign(rival, {
       x: START.x + 1.6, z: START.z, yaw: Math.PI / 2,

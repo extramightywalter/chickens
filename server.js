@@ -143,11 +143,12 @@ export function createLanServer() {
             room.game = createLanGame(selection, room.members);
             room.game.state.roundId = randomUUID();
             for (const racer of room.game.racers) {
-              const appearance = players.get(racer.id).appearance;
-              if (appearance) {
-                racer.appearance = appearance;
-                racer.color = ITEMS[appearance.color].color;
-              }
+              const sentAppearance = players.get(racer.id).appearance;
+              const fallbackColor = Object.entries(ITEMS)
+                .find(([, item]) => item.type === "color" && item.color === racer.color)?.[0] ?? "blue";
+              const appearance = sentAppearance ?? { color: fallbackColor, hat: null, clothing: null };
+              racer.appearance = appearance;
+              racer.color = ITEMS[appearance.color].color;
             }
             for (const id of room.members) players.get(id).keys = {};
           }

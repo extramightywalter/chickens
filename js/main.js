@@ -7,7 +7,7 @@ import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
 import { createLanMenu } from "./lan-menu.js";
 import { createLanRaceView } from "./lan-race-view.js";
 import { BLASTER_HP } from "./gun-arena.js";
-import { createShop, ITEMS, placeReward } from "./shop.js";
+import { createShop, ITEMS, outcomeReward } from "./shop.js";
 import {
   CANNON_REQUIRED_OVERLAP, CANNON_SPIN_WINDOW, CANNON_STAGES, cannonOverlap, cannonTimeToWall,
 } from "./cannon-race.js";
@@ -35,6 +35,8 @@ const abilityHelp = " | E spin (2s, half speed, 3s cooldown) | Space dive (3s co
 let menuStep = null;
 let shopPage = "shop";
 let roundReward = null;
+let soloRoundReward = null;
+let processedSoloRoundId = null;
 const shopMenu = document.getElementById("shop-menu");
 const shopItems = document.getElementById("shop-items");
 const shopStatus = document.getElementById("shop-status");
@@ -106,9 +108,11 @@ const lanMenu = createLanMenu({
     Object.assign(rival, round.racers.find(racer => racer.id !== playerId));
     if (round.state.scene === "finished" && roundReward === null) {
       const place = round.state.places?.find(entry => entry.id === playerId)?.place;
-      if (round.state.roundId && place && round.state.winnerIds.length > 0 &&
-          round.state.winnerIds.length < round.racers.length) {
-        const coins = placeReward(round.racers.length, place);
+      const isDraw = round.state.winnerIds.length === 0 ||
+        round.state.winnerIds.length === round.racers.length;
+      if (round.state.roundId && place && !isDraw) {
+        const coins = outcomeReward(round.racers.length, place,
+          round.state.winnerIds.length, round.racers.length);
         try {
           const credited = shop.reward(round.state.roundId, coins);
           roundReward = `Place ${place}: ${coins} coin${coins === 1 ? "" : "s"} ${credited ? "earned" : "already credited"}`;
@@ -324,7 +328,8 @@ function updateUI() {
         `PLAYER ${state.racers.find(racer => racer.id === state.winnerIds[0]).number} WINS!`;
   }
   message.querySelector("small").textContent = state.multiplayer ?
-    `${roundReward ?? ""} | Press Enter to leave the LAN game` : "Press Enter to return to the button";
+    `${roundReward ?? ""} | Press Enter to leave the LAN game` :
+    `${soloRoundReward ?? ""}${soloRoundReward ? " | " : ""}Press Enter to return to the button`;
   message.style.display = state.scene === "finished" ? "flex" : "none";
 }
 
@@ -346,9 +351,27 @@ function frame(now) {
     const number = Math.ceil(state.countdown);
     if (number > 0 && number !== lastCountdown) sounds.countdownBeep(number);
     lastCountdown = number;
+    if (!state.multiplayer) soloRoundReward = null;
   } else {
     if (previousScene === "countdown" && state.scene === state.minigame) sounds.startRace();
     lastCountdown = null;
+  }
+  if (!lanMenu.active && !state.multiplayer && state.scene === "finished" &&
+      state.roundId && processedSoloRoundId !== state.roundId) {
+    processedSoloRoundId = state.roundId;
+    if (state.playerWon === true) {
+      const coins = outcomeReward(2, 1, 1, 2);
+      try {
+        const credited = shop.reward(state.roundId, coins);
+        soloRoundReward = `${coins} coin${coins === 1 ? "" : "s"} ${credited ? "earned" : "already credited"}`;
+      } catch (error) {
+        soloRoundReward = `Could not save coins: ${error.message}`;
+      }
+    } else if (state.playerWon === null) {
+      soloRoundReward = "Draw: no coins awarded";
+    } else {
+      soloRoundReward = "Rival wins: no coins awarded";
+    }
   }
   sounds.updateRace(state.scene, elapsed);
   if (state.scene === "finished" && previousScene !== "finished") {

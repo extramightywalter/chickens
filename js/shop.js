@@ -72,3 +72,9 @@ export function placeReward(playerCount, place) {
   if (playerCount >= 4 && playerCount <= 8) return Math.max(0, 4 - place);
   return 0;
 }
+
+export function outcomeReward(playerCount, place, winnerCount, racerCount) {
+  if (!Number.isInteger(playerCount) || !Number.isInteger(winnerCount) ||
+      !Number.isInteger(racerCount) || winnerCount === 0 || winnerCount === racerCount) return 0;
+  return placeReward(playerCount, place);
+}
