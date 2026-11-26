@@ -68,10 +68,38 @@ test("LAN rounds share selected appearances and reject malformed selections", as
   const { room } = await host.next("rooms", data => data.room);
   const other = { color: "red", hat: "headphones", clothing: "gamer" };
   assert.equal((await guest.action("join", { roomId: room.id, appearance: other })).status, 200);
-  const round = await host.next("round");
-  assert.ok(round.state.roundId);
-  assert.deepEqual(round.racers.map(racer => racer.appearance), [appearance, other]);
-  assert.equal(round.racers[0].color, 0xe67e22);
+  for (const client of [host, guest]) {
+    const round = await client.next("round");
+    assert.ok(round.state.roundId);
+    assert.deepEqual(round.racers.map(racer => racer.appearance), [appearance, other]);
+    assert.deepEqual(round.racers.map(racer => racer.color), [0xe67e22, 0xd62828]);
+  }
+});
+
+test("LAN preserves matching selected colors and defaults missing appearances to the shop default", async t => {
+  const base = await setup(t);
+  const host = await connect(base), guest = await connect(base);
+  const appearance = { color: "purple", hat: "headphones", clothing: "gamer" };
+  assert.equal((await host.action("host", { slots: 2, selection: "track", appearance })).status, 200);
+  let { room } = await host.next("rooms", data => data.room);
+  const other = { color: "purple", hat: null, clothing: null };
+  assert.equal((await guest.action("join", { roomId: room.id, appearance: other })).status, 200);
+  for (const client of [host, guest]) {
+    const round = await client.next("round");
+    assert.deepEqual(round.racers.map(racer => racer.appearance), [appearance, other]);
+    assert.deepEqual(round.racers.map(racer => racer.color), [0x9b59b6, 0x9b59b6]);
+  }
+  assert.equal((await host.action("leave")).status, 200);
+  assert.equal((await host.action("host", { slots: 2, selection: "track" })).status, 200);
+  ({ room } = await host.next("rooms", data => data.room?.phase === "waiting"));
+  assert.equal((await guest.action("join", { roomId: room.id })).status, 200);
+  const round = await host.next("round", data => data.state.roundId &&
+    data.racers.every(racer => racer.appearance.color === "blue"));
+  assert.deepEqual(round.racers.map(racer => racer.appearance), [
+    { color: "blue", hat: null, clothing: null },
+    { color: "blue", hat: null, clothing: null },
+  ]);
+  assert.deepEqual(round.racers.map(racer => racer.color), [0x3498db, 0x3498db]);
 });
 
 test("rooms advertise host occupancy, enforce settings, and start only when all 2-8 slots fill", async t => {

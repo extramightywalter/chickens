@@ -6,7 +6,7 @@ import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MINIGAMES } from "./js/pillows.js";
 import { createLanGame } from "./js/lan-game.js";
-import { ITEMS, validAppearance } from "./js/shop.js";
+import { DEFAULT_APPEARANCE, ITEMS, validAppearance } from "./js/shop.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const types = {
@@ -143,10 +143,7 @@ export function createLanServer() {
             room.game = createLanGame(selection, room.members);
             room.game.state.roundId = randomUUID();
             for (const racer of room.game.racers) {
-              const sentAppearance = players.get(racer.id).appearance;
-              const fallbackColor = Object.entries(ITEMS)
-                .find(([, item]) => item.type === "color" && item.color === racer.color)?.[0] ?? "blue";
-              const appearance = sentAppearance ?? { color: fallbackColor, hat: null, clothing: null };
+              const appearance = players.get(racer.id).appearance ?? DEFAULT_APPEARANCE;
               racer.appearance = appearance;
               racer.color = ITEMS[appearance.color].color;
             }

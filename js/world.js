@@ -844,7 +844,13 @@ export async function createWorld() {
   function addOutfits(model) {
     function fit(source, width, bottom, centerZ, yaw, proportions = [1, 1, 1]) {
       const group = new THREE.Group();
-      group.add(source.clone(true));
+      const outfit = source.clone(true);
+      outfit.traverse(object => {
+        if (!object.isMesh) return;
+        object.material = Array.isArray(object.material) ?
+          object.material.map(material => material.clone()) : object.material.clone();
+      });
+      group.add(outfit);
       group.rotation.y = yaw;
       let bounds = new THREE.Box3().setFromObject(group);
       group.scale.setScalar(width / bounds.getSize(new THREE.Vector3()).x);

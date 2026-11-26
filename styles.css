@@ -11,11 +11,6 @@ canvas { display: block; }
   transform: translate(-50%, -50%); color: #fff; font: bold 13px sans-serif;
   text-shadow: 0 1px 3px #000; pointer-events: none; z-index: 2;
 }
-#rival-indicator .avatar {
-  display: block; width: 54px; height: 54px; flex: none; object-fit: cover;
-  padding: 3px; border-radius: 50%; background: rgba(0,0,0,.7); box-sizing: border-box;
-  border: 2px solid #e53935;
-}
 #rival-indicator .label {
   padding: 4px 7px; border-radius: 5px; background: rgba(0,0,0,.5);
 }

@@ -12,6 +12,7 @@ export const ITEMS = {
 };
 const STARTER_ITEMS = Object.keys(ITEMS).filter(id => ITEMS[id].price === undefined);
 const STORAGE_KEY = "chicken-shop-v1";
+export const DEFAULT_APPEARANCE = Object.freeze({ color: "blue", hat: null, clothing: null });
 
 export function validAppearance(appearance) {
   return appearance && typeof appearance === "object" &&
@@ -23,7 +24,7 @@ export function validAppearance(appearance) {
 export function createShop(storage) {
   const saved = storage.getItem(STORAGE_KEY);
   let data = saved === null ? {
-    coins: 0, owned: [...STARTER_ITEMS], appearance: { color: "blue", hat: null, clothing: null },
+    coins: 0, owned: [...STARTER_ITEMS], appearance: { ...DEFAULT_APPEARANCE },
     rewardedRounds: [],
   } : JSON.parse(saved);
   if (!Number.isSafeInteger(data.coins) || data.coins < 0 || !Array.isArray(data.owned) ||

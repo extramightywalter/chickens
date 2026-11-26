@@ -21,7 +21,8 @@ an equal chance of Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, Maze Ra
 Chicken Blaster, Monster Survival, or Cannon Race, or choose
 **Choose minigame** to start any game directly.
 Your chosen color and outfit follow you into solo and LAN games; LAN players
-see one another's choices.
+see one another's choices, even when they choose the same color. Equip items
+before hosting or joining a room; each player's selection is sent when they join.
 During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
 Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
