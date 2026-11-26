@@ -110,3 +110,16 @@ test("snapshot bursts and player ordering are matched by ID", () => {
   assert.equal(middle.find(player => player.id === "other").x, 5.2);
   assert.equal(view.sample(150).find(player => player.id === "local").x, 0.8);
 });
+
+test("the local player uses the latest authoritative state while remote players interpolate", () => {
+  const view = createLanRaceView();
+  view.push([racer("local", 0, { color: 0x3498db, appearance: { color: "blue" } }),
+    racer("other", 5)], 0);
+  view.push([racer("local", 1, { color: 0xe67e22, appearance: { color: "orange" } }),
+    racer("other", 5.4)], 50);
+  const sampled = view.sample(125, "local");
+  assert.equal(sampled.find(player => player.id === "local").x, 1);
+  assert.equal(sampled.find(player => player.id === "local").color, 0xe67e22);
+  assert.equal(sampled.find(player => player.id === "local").appearance.color, "orange");
+  assert.equal(sampled.find(player => player.id === "other").x, 5.2);
+});

@@ -50,10 +50,19 @@ function renderShop() {
     if (shopPage === "shop" ? item.price === undefined : !shop.owned.includes(id)) continue;
     const button = document.createElement("button");
     button.type = "button";
+    button.className = "shop-item";
     const equipped = shop.appearance[item.type] === id;
+    const preview = document.createElement("span");
+    preview.className = `shop-preview ${item.type === "color" ? "shop-color" : `shop-${id}`}`;
+    preview.setAttribute("aria-hidden", "true");
+    if (item.type === "color") preview.style.setProperty("--item-color", `#${item.color.toString(16).padStart(6, "0")}`);
+    const label = document.createElement("span");
     button.textContent = shopPage === "shop"
       ? `${item.name} (${item.type}) - ${shop.owned.includes(id) ? "Owned" : `${item.price} coins`}`
       : `${item.name} (${item.type})${equipped ? " - Equipped" : ""}`;
+    label.textContent = button.textContent;
+    button.textContent = "";
+    button.append(preview, label);
     if (shopPage === "shop") button.disabled = shop.owned.includes(id) || shop.coins < item.price;
     button.addEventListener("click", () => {
       try {
@@ -353,7 +362,7 @@ function frame(now) {
     state.color = ITEMS[state.appearance.color].color;
   }
   if (lanMenu.active) {
-    const racers = lanRaceView.sample(now);
+    const racers = lanRaceView.sample(now, state.id);
     const local = racers?.find(racer => racer.id === state.id);
     if (local) renderState = { ...state, ...local, racers };
   }

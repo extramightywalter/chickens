@@ -51,6 +51,70 @@ canvas { display: block; }
 }
 .menu-panel h1 { margin: 0 0 22px; color: #f9ed69; font-size: 30px; }
 .menu-options { display: grid; gap: 12px; }
+.menu-options #shop-items, #shop-items.menu-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.shop-preview {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 8px;
+  background: #f4f0dc;
+  border: 2px solid rgba(255,255,255,.45);
+  box-sizing: border-box;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+}
+.shop-preview.shop-color {
+  background: var(--item-color);
+  border-radius: 6px;
+  border: 3px solid #fff;
+}
+.shop-preview.shop-headphones::before {
+  content: "";
+  position: absolute;
+  left: 7px; top: 6px; width: 24px; height: 25px;
+  border: 5px solid #526173; border-bottom: 0; border-radius: 20px 20px 0 0;
+}
+.shop-preview.shop-headphones::after {
+  content: "";
+  position: absolute;
+  left: 4px; top: 20px; width: 8px; height: 13px; border-radius: 4px;
+  background: #526173; box-shadow: 23px 0 #526173;
+}
+.shop-preview.shop-cap {
+  background: #f4f0dc;
+}
+.shop-preview.shop-cap::before {
+  content: "";
+  position: absolute;
+  left: 7px; top: 9px; width: 27px; height: 18px;
+  background: #d62828; border-radius: 18px 18px 7px 7px;
+}
+.shop-preview.shop-cap::after {
+  content: "";
+  position: absolute;
+  left: 21px; top: 25px; width: 17px; height: 6px;
+  background: #b81e20; border-radius: 0 8px 8px 0;
+}
+.shop-preview.shop-gamer::before,
+.shop-preview.shop-jersey::before {
+  content: "";
+  position: absolute;
+  left: 9px; top: 9px; width: 24px; height: 27px;
+  background: #78a960;
+  clip-path: polygon(25% 0, 75% 0, 100% 18%, 85% 38%, 72% 30%, 72% 100%, 28% 100%, 28% 30%, 15% 38%, 0 18%);
+}
+.shop-preview.shop-jersey::before {
+  background: #dbe4ed;
+  border-top: 8px solid #5f7fa2;
+}
 .shop-tabs { display: flex; gap: 12px; }
 .shop-tabs button { flex: 1; }
 .shop-tabs button[aria-pressed="true"] { background: #368a68; }
