@@ -313,6 +313,16 @@ test("solo egg heist dashes can stun the rival", () => {
   assert.equal(game.rival.stunTimer, 1);
 });
 
+test("the solo egg rival dashes but never spins", () => {
+  const game = createGame();
+  game.enterEggs();
+  game.update(3);
+  game.update(0.1, 0.1);
+  assert.ok(game.rival.diveTimer > 0);
+  assert.equal(game.rival.spinTimer, 0);
+  assert.equal(game.rival.spinCooldown, 0);
+});
+
 test("solo rival collects eggs, can steal, and the round uses 90 real seconds", () => {
   const game = createGame();
   game.enterEggs();

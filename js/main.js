@@ -7,7 +7,7 @@ import { DOOR_COUNT, GATE_HALF_DEPTH } from "./doors.js";
 import { createLanMenu } from "./lan-menu.js";
 import { createLanRaceView } from "./lan-race-view.js";
 import { BLASTER_HP } from "./gun-arena.js";
-import { createShop, ITEMS, outcomeReward } from "./shop.js";
+import { createShop, ITEMS, outcomeReward, rivalGameRoundReward } from "./shop.js";
 import {
   CANNON_REQUIRED_OVERLAP, CANNON_SPIN_WINDOW, CANNON_STAGES, cannonOverlap, cannonTimeToWall,
 } from "./cannon-race.js";
@@ -359,19 +359,7 @@ function frame(now) {
   if (!lanMenu.active && !state.multiplayer && state.scene === "finished" &&
       state.roundId && processedSoloRoundId !== state.roundId) {
     processedSoloRoundId = state.roundId;
-    if (state.playerWon === true) {
-      const coins = outcomeReward(2, 1, 1, 2);
-      try {
-        const credited = shop.reward(state.roundId, coins);
-        soloRoundReward = `${coins} coin${coins === 1 ? "" : "s"} ${credited ? "earned" : "already credited"}`;
-      } catch (error) {
-        soloRoundReward = `Could not save coins: ${error.message}`;
-      }
-    } else if (state.playerWon === null) {
-      soloRoundReward = "Draw: no coins awarded";
-    } else {
-      soloRoundReward = "Rival wins: no coins awarded";
-    }
+    soloRoundReward = rivalGameRoundReward(state.playerWon);
   }
   sounds.updateRace(state.scene, elapsed);
   if (state.scene === "finished" && previousScene !== "finished") {

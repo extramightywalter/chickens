@@ -452,6 +452,7 @@ export async function createWorld() {
           lane.add(platform);
           if (stage === CANNON_STAGES) break;
           const cannon = cannons[0].clone(true);
+          cannon.rotation.set(0, 0, 0);
           cannon.position.set(0, 0, z);
           cannon.scale.setScalar(1.45);
           lane.add(cannon);
@@ -867,7 +868,7 @@ export async function createWorld() {
       cap: fit(outfitModels.cap, 1.05, 2.02, -0.38, Math.PI / 2),
       headphones: fit(outfitModels.headphones, 1.35, 1.52, -0.45, 0),
       gamer: fit(outfitModels.gamer, 2.4, 1.05, 0.18, Math.PI / 2, [1, 0.6, 0.75]),
-      jersey: fit(outfitModels.jersey, 2.4, 1.05, 0.18, Math.PI / 2, [1, 0.6, 0.75]),
+      jersey: fit(outfitModels.jersey, 2.4, 1.05, 0.18, -Math.PI / 2, [1, 0.6, 0.75]),
     };
     for (const outfit of Object.values(outfits)) {
       outfit.visible = false;

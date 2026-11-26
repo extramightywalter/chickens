@@ -428,6 +428,9 @@ test("elimination drops held defenses, and the rival can pick up and place defen
 test("supplied Monster Blaster layout is parsed and malformed layouts fail explicitly", () => {
   const pieces = parseMonsterBlaster(readFileSync(
     new URL("../assets/models/monster blaster.model", import.meta.url), "utf8"));
+  assert.equal(pieces.length, 17);
+  assert.ok(pieces.every(piece => piece.position.length === 3 &&
+    piece.rotation.length === 3 && piece.scale.length === 3));
   assert.ok(pieces.some(piece => piece.type === "blaster_barrelLarge"));
   assert.ok(pieces.some(piece => piece.color[0] === 1 && piece.color[1] === 0));
   assert.equal(monsterBlasterGeometryKind("blaster_barrelLarge"), "barrel");

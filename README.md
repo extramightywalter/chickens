@@ -89,8 +89,8 @@ only once.
   final eliminations draw. The solo rival collects and places the same defenses.
   Uses the supplied flame gun, trap, regular monster, and Runna GLBs.
   `assets/models/monster blaster.model` is an Asset Forge part layout, not a mesh;
-  its transforms and colors are reconstructed with primitive approximations,
-  like Chicken Blaster's arena. Export it as GLB for exact part geometry.
+  the game reads its exact part types, transforms, scales, and colors directly
+  and rebuilds the drawing from that saved layout.
 - **Chicken Blaster:** A first-person last-chicken-standing battle against the
   solo rival or 2-8 players over LAN. Every chicken holds the supplied
   `assets/models/chicken blaster.glb`, with visible wings and hands gripping it.

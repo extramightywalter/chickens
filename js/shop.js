@@ -79,3 +79,9 @@ export function outcomeReward(playerCount, place, winnerCount, racerCount) {
       !Number.isInteger(racerCount) || winnerCount === 0 || winnerCount === racerCount) return 0;
   return placeReward(playerCount, place);
 }
+
+export function rivalGameRoundReward(playerWon) {
+  if (playerWon === null) return "Draw: no coins awarded";
+  if (playerWon === true) return "Win: no coins awarded";
+  return "Rival wins: no coins awarded";
+}

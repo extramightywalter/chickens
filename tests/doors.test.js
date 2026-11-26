@@ -151,7 +151,7 @@ test("the monster catching the rival makes the player win", () => {
   const game = seededGame();
   start(game);
   game.state.z = 15;
-  Object.assign(game.rival, { x: 0, z: game.state.monster.z + 1.6 });
+  Object.assign(game.rival, { x: 0, z: game.state.monster.z + 0.5 });
   game.update(0.05, 0.05, {});
   assert.equal(game.state.scene, "finished");
   assert.equal(game.state.caught, "rival");

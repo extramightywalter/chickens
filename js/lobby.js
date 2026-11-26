@@ -39,6 +39,17 @@ export function updateAbilities(racer, dt, keys, previousKeys, active) {
   racer.diveTimer = Math.max(0, racer.diveTimer - dt);
 }
 
+export function updateRivalDive(racer, dt, active = true) {
+  racer.spinTimer = 0;
+  racer.spinCooldown = 0;
+  racer.diveCooldown = Math.max(0, (racer.diveCooldown ?? 0) - dt);
+  racer.diveTimer = Math.max(0, (racer.diveTimer ?? 0) - dt);
+  if (active && dt > 0 && racer.diveCooldown === 0) {
+    racer.diveTimer = DIVE_DURATION;
+    racer.diveCooldown = ABILITY_COOLDOWN;
+  }
+}
+
 export function collide(px, pz, walls) {
   for (const wall of walls) {
     const cx = Math.max(wall.minX, Math.min(px, wall.maxX));
@@ -289,7 +300,9 @@ export function createGame({ random = Math.random } = {}) {
     if (dt === 0) return;
     driver.reaction -= dt;
     if (driver.reaction <= 0) chooseRivalControls();
-    if (!moveTrackRacer(rival, dt, rival.controls.forward, rival.controls.turn, RIVAL_SPEED)) {
+    const straightDash = rival.diveTimer > 0 && rival.controls.turn === 0;
+    const speed = RIVAL_SPEED * (straightDash ? DIVE_SPEED_MULTIPLIER : 1);
+    if (!moveTrackRacer(rival, dt, rival.controls.forward, rival.controls.turn, speed)) {
       rival.eliminated = true;
       finishRace(true);
       return;
@@ -299,6 +312,7 @@ export function createGame({ random = Math.random } = {}) {
   }
 
   function update(dt, elapsed = dt, keys = {}) {
+    if (state.scene === "finished") return { moving: false, dt: 0 };
     if (state.minigame === "cannon-race") {
       if (state.scene === "finished") return { moving: false, dt: 0 };
       if (state.scene === "countdown") {
@@ -378,6 +392,8 @@ export function createGame({ random = Math.random } = {}) {
     else updateAbilities(state, dt, state.minigame === "eggs" ? { ...keys, e: false } : keys, previousActionKeys,
       (state.scene === "eggs" && !playerStunned) ||
       ["lobby", "track", "pillows", "doors"].includes(state.scene));
+    const rivalCanDash = ["track", "pillows", "doors", "eggs"].includes(state.scene);
+    updateRivalDive(rival, dt, rivalCanDash);
     if (state.minigame === "eggs") previousActionKeys.e = keys.e === true;
     if (state.scene === "countdown") {
       state.countdown = Math.max(0, state.countdown - elapsed);
@@ -423,13 +439,15 @@ export function createGame({ random = Math.random } = {}) {
       }
       if (state.scene === "pillows") {
         pillowRound.chooseControls(state, rival, dt);
-        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, walls);
+        const rivalSpeed = SPEED * (rival.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
+        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, rivalSpeed, walls);
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
         pillowRound.update(state, rival, dt, previousPlayer, previousRival);
       } else if (state.scene === "doors") {
         doorRound.chooseControls(state, rival, dt);
         const rivalWalls = [...pathWalls, ...gateWalls, ...lockedWalls(state.doors, "rival")];
-        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, rivalWalls);
+        const rivalSpeed = SPEED * (rival.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
+        moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, rivalSpeed, rivalWalls);
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
         doorRound.update(state, rival, dt);
       } else if (battle && dt > 0) {
@@ -443,7 +461,11 @@ export function createGame({ random = Math.random } = {}) {
         if (eggPressed && !playerStunned) eggRound.interact(state, state, [state, rival]);
         if (!rivalStunned) eggRound.chooseControls(state, rival, [state, rival]);
         else rival.controls = { forward: 0, turn: 0 };
-        if (!rivalStunned) moveRacer(rival, dt, rival.controls.forward, rival.controls.turn, SPEED, eggWalls);
+        if (!rivalStunned) {
+          const rivalForward = rival.diveTimer > 0 ? Math.max(rival.controls.forward, 1) : rival.controls.forward;
+          const rivalSpeed = SPEED * (rival.diveTimer > 0 ? DIVE_SPEED_MULTIPLIER : 1);
+          moveRacer(rival, dt, rivalForward, rival.controls.turn, rivalSpeed, eggWalls);
+        }
         rival.walk = rival.controls.forward ? rival.walk + dt * 11 : 0;
         eggRound.resolveDashCollisions([state, rival], [previousPlayer, previousRival]);
         const winners = eggRound.update(state, [state, rival], elapsed);

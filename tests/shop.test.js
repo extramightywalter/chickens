@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createShop, ITEMS, outcomeReward, placeReward, validAppearance } from "../js/shop.js";
+import { createShop, ITEMS, outcomeReward, placeReward, rivalGameRoundReward, validAppearance } from "../js/shop.js";
 import { createGame } from "../js/lobby.js";
 import { SHOP_DESK } from "../js/track.js";
 
@@ -60,6 +60,12 @@ test("rewards follow human-player counts and appearance values are validated", (
   assert.equal(validAppearance({ color: "blue", hat: "headphones", clothing: null }), true);
   assert.equal(validAppearance({ color: "cap", hat: null, clothing: null }), false);
   assert.equal(ITEMS.orange.price, 5);
+});
+
+test("rival game outcomes never award coins", () => {
+  assert.equal(rivalGameRoundReward(true), "Win: no coins awarded");
+  assert.equal(rivalGameRoundReward(false), "Rival wins: no coins awarded");
+  assert.equal(rivalGameRoundReward(null), "Draw: no coins awarded");
 });
 
 test("a failed storage write does not update the in-memory balance", () => {

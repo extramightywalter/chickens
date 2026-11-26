@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGame } from "../js/lobby.js";
+import { createGame, DIVE_SPEED_MULTIPLIER } from "../js/lobby.js";
 import { ARENA, CANNONS, CANNON_MUZZLE, MINIGAMES, PILLOW_RADIUS } from "../js/pillows.js";
 import { R, SPEED, TURN } from "../js/track.js";
 
@@ -214,7 +214,7 @@ for (const dt of [1 / 120, 1 / 60, 0.05]) {
       game.update(dt);
       assert.ok(Math.abs(game.rival.yaw - yaw) <= TURN * dt + 1e-10);
       const distance = Math.hypot(game.rival.x - x, game.rival.z - z);
-      assert.ok(distance <= SPEED * dt + 1e-10);
+      assert.ok(distance <= SPEED * DIVE_SPEED_MULTIPLIER * dt + 1e-10);
       assert.ok(Math.abs(game.rival.x) <= ARENA.maxX - R + 1e-10);
       assert.ok(Math.abs(game.rival.z) <= ARENA.maxZ - R + 1e-10);
       assert.ok([-1, 0, 1].includes(game.rival.controls.turn));

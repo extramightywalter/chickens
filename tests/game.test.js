@@ -183,6 +183,18 @@ test("Space triggers a forward dive even without a movement key", () => {
     SPEED * 0.1 * DIVE_SPEED_MULTIPLIER) < 1e-10);
 });
 
+test("the solo rival dashes in the race but never spins", () => {
+  const game = createGame();
+  game.enterTrack();
+  game.update(3);
+  const before = { x: game.rival.x, z: game.rival.z };
+  game.update(0.1, 0.1);
+  assert.ok(game.rival.diveTimer > 0);
+  assert.equal(game.rival.spinTimer, 0);
+  assert.equal(game.rival.spinCooldown, 0);
+  assert.ok(Math.hypot(game.rival.x - before.x, game.rival.z - before.z) > 0);
+});
+
 test("countdown uses elapsed time and grants neither racer a head start", () => {
   const game = createGame();
   game.enterTrack();
@@ -616,7 +628,8 @@ for (const dt of [1 / 120, 1 / 60, 0.05]) {
       const { x, z, yaw } = game.rival;
       game.update(dt);
       assert.ok(Math.abs(game.rival.yaw - yaw) <= TURN * dt + 1e-10);
-      assert.ok(Math.hypot(game.rival.x - x, game.rival.z - z) <= RIVAL_SPEED * dt + 1e-10);
+      assert.ok(Math.hypot(game.rival.x - x, game.rival.z - z) <=
+        RIVAL_SPEED * DIVE_SPEED_MULTIPLIER * dt + 1e-10);
       assert.equal(isTrackSupported(game.rival.x, game.rival.z), true);
     }
     assert.equal(game.state.scene, "finished");
