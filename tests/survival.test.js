@@ -6,7 +6,7 @@ import { createLanGame } from "../js/lan-game.js";
 import { MAZE_SIZE, mazeCellAt, mazeClearFraction, mazePath, mazePosition } from "../js/maze.js";
 import {
   CARRY_SPEED_MULTIPLIER, MONSTER_RADIUS, SURVIVAL_COLS, SURVIVAL_SIZE,
-  createSurvivalRound, generateSurvivalMap, parseMonsterBlaster,
+  createSurvivalRound, generateSurvivalMap, monsterBlasterGeometryKind, parseMonsterBlaster,
 } from "../js/survival.js";
 import { R, SPEED } from "../js/track.js";
 
@@ -430,6 +430,10 @@ test("supplied Monster Blaster layout is parsed and malformed layouts fail expli
     new URL("../assets/models/monster blaster.model", import.meta.url), "utf8"));
   assert.ok(pieces.some(piece => piece.type === "blaster_barrelLarge"));
   assert.ok(pieces.some(piece => piece.color[0] === 1 && piece.color[1] === 0));
+  assert.equal(monsterBlasterGeometryKind("blaster_barrelLarge"), "barrel");
+  assert.equal(monsterBlasterGeometryKind("leg_spike"), "spike");
+  assert.equal(monsterBlasterGeometryKind("leg"), "leg");
+  assert.equal(monsterBlasterGeometryKind("body_point_ring"), "ring");
   assert.throws(() => parseMonsterBlaster(""), /no visible parts/);
   assert.throws(() => parseMonsterBlaster("[collection:Animals;type:leg;]"), /Invalid/);
 });
