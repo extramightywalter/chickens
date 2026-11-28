@@ -284,8 +284,8 @@ export function createSurvivalRound(random = Math.random) {
       const keys = inputs(racer, dt);
       actions(state, racer, keys);
       if (racer.eliminated) continue;
-      const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
-      const turn = Number(Boolean(keys.a || keys.arrowleft)) - Number(Boolean(keys.d || keys.arrowright));
+      const forward = Number(Boolean(keys.w)) - Number(Boolean(keys.s));
+      const turn = Number(Boolean(keys.a)) - Number(Boolean(keys.d));
       racer.controls = { forward, turn };
       const speed = SPEED * (racer.carryingDefenseId === null ? 1 : CARRY_SPEED_MULTIPLIER);
       moveRacer(racer, dt, forward, turn, speed, map.walls);

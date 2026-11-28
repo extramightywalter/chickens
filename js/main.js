@@ -1,5 +1,5 @@
 import { createGame } from "./lobby.js";
-import { createInput } from "./input.js";
+import { createInput, navigateGamepadMenu, updateLook } from "./input.js";
 import { checkpoints } from "./track.js";
 import { createWorld } from "./world.js";
 import { createSoundEffects } from "./audio.js";
@@ -181,7 +181,18 @@ document.getElementById("back-to-menu").addEventListener("click", () => {
 });
 document.getElementById("close-menu").addEventListener("click", closeMenu);
 
-const input = createInput(key => {
+const input = createInput((key, source) => {
+  if (source === "gamepad") {
+    const overlay = !shopMenu.hidden ? shopMenu :
+      lanMenu.isOpen ? document.getElementById("lan-menu") : menuStep !== null ? gameMenu : null;
+    if (overlay) {
+      if (key === "e") key = "escape";
+      else {
+        navigateGamepadMenu(overlay, key);
+        return;
+      }
+    } else if (state.scene === "finished" && key === " ") key = "enter";
+  }
   if (!shopMenu.hidden) {
     if (key === "escape") closeShop();
     return;
@@ -254,14 +265,14 @@ function cannonHud() {
     const coverage = cannonOverlap(state.cannonWalls[state.cannonStage], state.cannonAimX, state.cannonAimY);
     const safe = coverage + 1e-9 >= CANNON_REQUIRED_OVERLAP;
     const percent = safe ? Math.round(coverage * 100) : Math.floor(coverage * 100);
-    hint = `WASD / arrows aim | ${percent}% on teal (75% needed) | Space launch`;
+    hint = `WASD aim | ${percent}% on teal (75% needed) | Space launch`;
   } else if (state.cannonPhase === "flight") {
     const remaining = cannonTimeToWall(state);
     hint = state.cannonSpin > remaining ? "Spinning!" :
       remaining < CANNON_SPIN_WINDOW ? "SPIN NOW! E or Space" : "Wait until just before the wall, then press E or Space to spin";
   } else if (state.cannonPhase === "land") hint = "Wall cleared - landing";
   else hint = state.cannonStage === CANNON_STAGES ? "Run across the checkered finish line!" :
-    "WASD / arrows to walk into the cannon";
+    "W/S move | A/D turn into the cannon";
   return `${state.multiplayer ? "LAN " : ""}CANNON RACE | ${standings} | ${hint}`;
 }
 
@@ -272,13 +283,13 @@ function updateUI() {
   const controlsHelp = state.minigame === "survival" ?
     ` | ${defenseHelp} | Guns fire at nearby monsters | Traps and fire hurt you too${!state.eliminated && state.invulnerable > 0 ? " | HIT - briefly protected" : ""}${state.survivalNotice ? ` | ${state.survivalNotice}` : ""}` :
     state.minigame === "gun-arena" ?
-    ` | Click to aim with mouse | Click / hold Space to shoot | ${BLASTER_HP} HP, last chicken standing` :
+    ` | Arrows or mouse to aim | Click / hold Space to shoot | ${BLASTER_HP} HP, last chicken standing` :
     state.minigame === "egg-battle" ?
     " | E pick up egg | Space throw egg / jump when empty-handed" : state.minigame === "eggs" ?
     " | E pick up / steal / drop egg | Space dash (stuns on contact)" :
     state.minigame === "maze" ? " | Find the green EXIT | Avoid monsters' sight | 5 catches = OUT" : abilityHelp;
   hud.textContent = state.scene === "lobby"
-    ? `W/S move | A/D turn | ${
+    ? `W/S move | A/D turn | Arrows orbit camera | ${
       game.nearLanButton() ? "Press E to host or join a LAN game" :
       game.nearShop() ? "Press E to open the shop" :
       game.nearButton() ? "Press E to choose a minigame" :
@@ -295,11 +306,11 @@ function updateUI() {
           state.minigame === "maze" ? (racer.eliminated ? "OUT" :
             `${racer.mazeRestarts}/5 catches`) :
             raceProgress(racer)}${racer.stunTimer > 0 ? " (stunned)" : ""}`).join(" | ")
-      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | ${state.minigame === "gun-arena" ? "A/D or Left/Right strafe" : "A/D turn"}${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
+      }${state.minigame === "eggs" ? ` | ${Math.ceil(state.eggTimeLeft)}s | Your pit: P${state.number}${state.carryingEggId !== null ? " | Carrying an egg" : ""}` : ""}${state.minigame === "egg-battle" ? (state.carryingEggId !== null ? " | Holding egg - Space to throw" : " | Empty-handed - Space to jump") : ""} | W/S move | ${state.minigame === "gun-arena" ? "A/D strafe" : "A/D turn"}${controlsHelp}${state.eliminated ? " | Eliminated - watching until the round ends" : ""}`
     : state.minigame === "survival"
       ? `MONSTER SURVIVAL | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Last player standing wins | W/S move | A/D turn${controlsHelp}${state.eliminated ? " | OUT" : ""}`
     : state.minigame === "gun-arena"
-      ? `CHICKEN BLASTER | You: ${state.lives}/${BLASTER_HP} HP | Rival: ${rival.lives}/${BLASTER_HP} HP | W/S move | A/D or Left/Right strafe${controlsHelp}`
+      ? `CHICKEN BLASTER | You: ${state.lives}/${BLASTER_HP} HP | Rival: ${rival.lives}/${BLASTER_HP} HP | W/S move | A/D strafe${controlsHelp}`
     : state.minigame === "maze"
       ? `MAZE RACE | First to the green exit wins | Caught: ${state.mazeRestarts}/5 | ${state.mazeMonsters.length} roaming monsters | W/S move | A/D turn${controlsHelp}`
     : state.minigame === "egg-battle"
@@ -311,6 +322,7 @@ function updateUI() {
     : state.minigame === "pillows"
       ? `PILLOW DODGE | You: ${state.lives}/3 lives | Rival: ${rival.lives}/3 lives | Survived: ${state.survivalTime.toFixed(1)}s | W/S move | A/D turn${abilityHelp}${rival.intent === "tired" ? " | Rival is tired!" : ""}`
       : `RACE | You: ${raceProgress(state)} | Red rival: ${raceProgress(rival)} | W/S move | A/D turn${abilityHelp} | Follow the arrows`;
+  if (state.scene !== "lobby" && state.minigame !== "gun-arena") hud.textContent += " | Arrow keys orbit camera";
   const playing = state.scene === state.minigame;
   countdown.textContent = playing && state.goTimer > 0
     ? "GO!" : String(Math.ceil(state.countdown));
@@ -328,8 +340,8 @@ function updateUI() {
         `PLAYER ${state.racers.find(racer => racer.id === state.winnerIds[0]).number} WINS!`;
   }
   message.querySelector("small").textContent = state.multiplayer ?
-    `${roundReward ?? ""} | Press Enter to leave the LAN game` :
-    `${soloRoundReward ?? ""}${soloRoundReward ? " | " : ""}Press Enter to return to the button`;
+    `${roundReward ?? ""} | Press Enter or gamepad A to leave the LAN game` :
+    `${soloRoundReward ?? ""}${soloRoundReward ? " | " : ""}Press Enter or gamepad A to return to the button`;
   message.style.display = state.scene === "finished" ? "flex" : "none";
 }
 
@@ -339,7 +351,20 @@ let last = performance.now();
 function frame(now) {
   const elapsed = (now - last) / 1000;
   last = now;
+  input.pollGamepad();
   const keys = menuStep === null && !lanMenu.isOpen && shopMenu.hidden ? input.keys : {};
+  const lookDt = Math.min(elapsed, 0.05);
+  if (state.minigame === "gun-arena") {
+    if (state.scene === "gun-arena" && !state.eliminated &&
+        (keys.arrowleft || keys.arrowright || keys.arrowup || keys.arrowdown || keys.lookX || keys.lookY)) {
+      const look = updateLook({
+        yaw: keys.aimYaw ?? state.yaw,
+        pitch: keys.aimPitch ?? state.pitch,
+      }, keys, lookDt);
+      keys.aimYaw = look.yaw;
+      keys.aimPitch = look.pitch;
+    }
+  } else world.updateLook(keys, lookDt, elapsed);
   lanMenu.setKeys(keys);
   const { moving, dt } = lanMenu.active ?
     { moving: !state.eliminated &&
@@ -379,7 +404,7 @@ function frame(now) {
   }
   const renderMoving = renderState === state ? moving :
     !renderState.eliminated && renderState.controls.forward !== 0;
-  world.render(renderState, rival, dt, renderMoving, game.nearButton(), game.nearLanButton());
+  world.render(renderState, rival, dt, renderMoving, game.nearButton(), game.nearLanButton(), lookDt);
   previousScene = state.scene;
   requestAnimationFrame(frame);
 }

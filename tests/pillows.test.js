@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createGame, DIVE_SPEED_MULTIPLIER } from "../js/lobby.js";
+import { createOrbitState, updateOrbit } from "../js/camera.js";
+import { readGamepad } from "../js/input.js";
+import { createLanGame } from "../js/lan-game.js";
 import { ARENA, CANNONS, CANNON_MUZZLE, MINIGAMES, PILLOW_RADIUS } from "../js/pillows.js";
 import { R, SPEED, TURN } from "../js/track.js";
 
@@ -60,21 +63,21 @@ test("pillow countdown holds both chickens and projectiles still", () => {
   assert.deepEqual(game.state.pillows, []);
 });
 
-test("pillow arena retains WASD and arrow movement with solid small boundaries", () => {
-  for (const keys of [{ w: true }, { arrowup: true }, { s: true }, { arrowdown: true }]) {
+test("pillow arena retains WASD movement with solid small boundaries", () => {
+  for (const keys of [{ w: true }, { s: true }]) {
     const game = seededGame();
     start(game);
     const before = game.state.z;
     game.update(0.05, 0.05, keys);
-    const forward = keys.w || keys.arrowup;
+    const forward = keys.w;
     assert.ok(Math.abs(game.state.z - before - (forward ? -1 : 1) * SPEED * 0.05) < 1e-10);
   }
-  for (const key of ["a", "arrowleft", "d", "arrowright"]) {
+  for (const key of ["a", "d"]) {
     const game = seededGame();
     start(game);
     const before = game.state.yaw;
     game.update(0.05, 0.05, { [key]: true });
-    const expected = (key === "a" || key === "arrowleft" ? 1 : -1) * TURN * 0.05;
+    const expected = (key === "a" ? 1 : -1) * TURN * 0.05;
     assert.ok(Math.abs(game.state.yaw - before - expected) < 1e-10);
   }
   for (const [x, z, yaw] of [
@@ -87,6 +90,33 @@ test("pillow arena retains WASD and arrow movement with solid small boundaries",
     game.update(0.05, 0.05, { w: true });
     assert.ok(Math.abs(game.state.x - x) < 1e-10);
     assert.ok(Math.abs(game.state.z - z) < 1e-10);
+  }
+});
+
+test("forward follows the chicken rather than the camera in solo and LAN Pillow Dodge", () => {
+  const pad = {
+    connected: true, mapping: "standard", axes: [0, -1, 1, 0],
+    buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+  };
+  const keys = readGamepad(pad);
+  const orbit = createOrbitState();
+  updateOrbit(orbit, keys, 0.5, 0.5);
+  assert.notEqual(orbit.look.yaw, 0);
+
+  for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const solo = seededGame();
+    start(solo);
+    Object.assign(solo.state, { x: 0, z: 0, yaw });
+    solo.update(0.05, 0.05, keys);
+    assert.ok(Math.abs(solo.state.x - Math.sin(yaw) * SPEED * 0.05) < 1e-10);
+    assert.ok(Math.abs(solo.state.z - Math.cos(yaw) * SPEED * 0.05) < 1e-10);
+
+    const lan = createLanGame("pillows", ["one", "two"], () => 0.1);
+    lan.update(3);
+    Object.assign(lan.racers[0], { x: 0, z: 0, yaw });
+    lan.update(0.05, new Map([["one", keys]]));
+    assert.ok(Math.abs(lan.racers[0].x - Math.sin(yaw) * SPEED * 0.05) < 1e-10);
+    assert.ok(Math.abs(lan.racers[0].z - Math.cos(yaw) * SPEED * 0.05) < 1e-10);
   }
 });
 

@@ -118,7 +118,7 @@ canvas { display: block; }
   background: #c0392b; color: #fff; font: bold 18px sans-serif;
   cursor: pointer;
 }
-.menu-panel button:hover, .menu-panel button:focus-visible {
+.menu-panel button:hover, .menu-panel button:focus, .menu-panel select:focus {
   background: #ff4757; outline: 3px solid #f9ed69; outline-offset: 2px;
 }
 .menu-panel .menu-cancel {

@@ -1,4 +1,4 @@
-import { SPEED } from "./track.js";
+import { SPEED, TURN } from "./track.js";
 
 export const CANNON_STAGES = 5;
 export const CANNON_SPACING = 25;
@@ -82,21 +82,25 @@ export function createCannonRace(random = Math.random) {
     const { launch, spin } = actions(racer, keys);
     const startZ = racer.cannonStage * CANNON_SPACING;
     const lane = racer.cannonLane;
-    const vertical = axis(keys.w || keys.arrowup, keys.s || keys.arrowdown);
-    const horizontal = axis(keys.a || keys.arrowleft, keys.d || keys.arrowright);
+    const vertical = axis(keys.w, keys.s);
+    const horizontal = axis(keys.a, keys.d);
     racer.controls.forward = 0;
+    racer.controls.turn = 0;
     if (racer.cannonPhase === "walk") {
-      const speed = SPEED / (Math.hypot(horizontal, vertical) || 1);
+      racer.controls.turn = horizontal;
+      racer.yaw += horizontal * TURN * dt;
       const oldZ = racer.z;
-      racer.x = lane + clamp(racer.x - lane + horizontal * speed * dt, -4, 4);
-      racer.z = clamp(oldZ + vertical * speed * dt, startZ - 4, startZ + 1);
-      if (horizontal || vertical) {
-        racer.controls.forward = 1;
-        racer.yaw = Math.atan2(horizontal, vertical);
+      racer.x = lane + clamp(racer.x - lane + Math.sin(racer.yaw) * vertical * SPEED * dt, -4, 4);
+      racer.z = clamp(oldZ + Math.cos(racer.yaw) * vertical * SPEED * dt, startZ - 4, startZ + 1);
+      if (vertical) {
+        racer.controls.forward = vertical;
         racer.walk += dt * 11;
       }
       if (racer.cannonStage === CANNON_STAGES) {
-        if (racer.z >= CANNON_FINISH_Z) return (CANNON_FINISH_Z - oldZ) / speed;
+        if (oldZ >= CANNON_FINISH_Z) return 0;
+        if (racer.z >= CANNON_FINISH_Z) {
+          return dt * (CANNON_FINISH_Z - oldZ) / (racer.z - oldZ);
+        }
       } else if (Math.hypot(racer.x - lane, racer.z - startZ) <= 0.85) {
         Object.assign(racer, {
           x: lane, z: startZ, yaw: 0, walk: 0, cannonY: CANNON_LAUNCH_Y,
@@ -153,8 +157,12 @@ export function createCannonRace(random = Math.random) {
   function chooseControls(state, racer, dt) {
     const steer = (error, tolerance) => Math.abs(error) <= tolerance ? 0 : Math.sign(error);
     if (racer.cannonPhase === "walk") {
-      const side = racer.cannonStage === CANNON_STAGES ? 0 : steer(racer.cannonLane - racer.x, 0.15);
-      return { w: true, a: side > 0, d: side < 0 };
+      const targetZ = racer.cannonStage * CANNON_SPACING +
+        (racer.cannonStage === CANNON_STAGES ? 1 : 0);
+      const yaw = Math.atan2(racer.cannonLane - racer.x, targetZ - racer.z);
+      const error = Math.atan2(Math.sin(yaw - racer.yaw), Math.cos(yaw - racer.yaw));
+      const turn = steer(error, TURN * dt / 2);
+      return { w: Math.abs(error) < 0.3, a: turn > 0, d: turn < 0 };
     }
     if (racer.cannonPhase === "aim") {
       let plan = bot.get(racer);

@@ -14,7 +14,11 @@ python3 -m http.server 8000 --bind 127.0.0.1
 Open <http://127.0.0.1:8000>. Three.js is loaded from the CDN in the import map,
 so an internet connection is required. GitHub Pages serves the same files as-is.
 
-W/S or up/down arrows move; A/D or left/right arrows turn. House and shop
+W/S move forward/backward relative to your chicken; A/D turn it. Camera position
+does not change movement direction. The arrow keys move the camera left, right, up, or down
+around your chicken without moving it; after three seconds without camera input,
+the camera returns to its default view. In Chicken Blaster, the arrow keys aim
+instead, turning the chicken as well. House and shop
 entrances are open. Walk through the lobby arch at the end of the road to the
 red button inside, then press E to open the minigame menu. Choose **Random** for
 an equal chance of Race, Pillow Dodge, Door Dash, Egg Heist, Egg Battle, Maze Race,
@@ -27,6 +31,15 @@ During Race, Pillow Dodge, and Door Dash, press **E** to spin for two seconds
 (movement is half speed). In Egg Heist, **E** picks up or drops one egg instead.
 Press **Space** to dive forward in those games and Egg Heist. Spin and dive each have their own
 three-second cooldown.
+
+Standard gamepads, and the USB 8BitDo Ultimate 2C on Linux Chrome, are supported
+in solo and LAN games: the left stick or D-pad
+uses W/S and A/D (move and turn, or strafe in Chicken Blaster), the right stick
+controls the camera or aim, A acts as Space, and B acts as E. Menus and returning
+from a finished game also support gamepads: use up/down to move between menu
+controls, left/right to change a selection, A to select or return after a round,
+and B to go back or close a menu. Connect a controller and press a button if the
+browser has not detected it yet.
 
 ## Shop and coins
 
@@ -49,7 +62,7 @@ progress or simultaneous eliminations tie. A completed round can be credited
 only once.
 
 - **Cannon Race:** Race a solo rival or 2–8 LAN players through five walls. Use
-  **WASD** or the **arrow keys** to walk into the cannon, use the same keys to
+  **W/S** to move and **A/D** to turn into the cannon, then use those keys to
   aim, then press **Space** to launch. You gradually drop in flight. Press
   **E** or press **Space** again just before the wall to spin through it. At
   least **75%** of your chicken's footprint must overlap teal squares and the
@@ -95,10 +108,9 @@ only once.
   solo rival or 2-8 players over LAN. Every chicken holds the supplied
   `assets/models/chicken blaster.glb`, with visible wings and hands gripping it.
   Everyone starts with **30 HP** in solo and LAN; each bullet does **1 damage**, and the last
-  survivor wins. Simultaneous final hits draw. W/S move; A/D or the left/right
-  arrow keys strafe relative to the camera in both solo and LAN. Click the game
-  to capture the mouse and aim horizontally
-  and vertically. Hold the
+  survivor wins. Simultaneous final hits draw. W/S move; A/D strafe relative to
+  the camera in both solo and LAN. Use the arrow keys to aim, or click the game
+  to capture the mouse and aim horizontally and vertically. Hold the
   left mouse button or **Space** to fire, with unlimited ammo and a 0.45-second
   shot cooldown. Escape releases the mouse. Walls and cover stop bullets.
   Eliminated players cannot move or shoot. There is no jump, spin, dive, or
@@ -119,8 +131,8 @@ only once.
   in the same blue chamber and race to the green **EXIT** near the far end.
   The maze has one-and-a-half times Egg Heist's playable floor area (about 53 by
   53 units), with
-  narrow corridors and tall walls. The camera stays behind your chicken and
-  moves closer when a wall is behind you, so it cannot peek through walls.
+  narrow corridors and tall walls. The camera follows your chicken and
+  moves closer when a wall is in its path, so it cannot peek through walls.
   Each maze has 2-4 wandering monsters. They only spot chickens within a
   forward-facing 90-degree field of view, at up to 12 units, with walls blocking
   their sight. A spotted chicken is chased; after losing sight, monsters search
@@ -135,7 +147,7 @@ only once.
   Being caught clears its exploration memory along with returning it to the start.
 - **Egg Battle:** Fight the red rival, or 2-8 human players over LAN, in a
   36-by-36 arena (twice Pillow Dodge's width and length). The camera stays
-  directly behind your chicken. Twenty-five eggs are scattered across the map.
+  behind your chicken by default. Twenty-five eggs are scattered across the map.
   Press **E** near a ground egg to carry it; you can hold only one at a time.
   Press **Space** to throw it in the direction you face. Empty-handed Space
   makes you jump in place, or keep moving normally while airborne, instead of diving.
@@ -151,7 +163,7 @@ only once.
 - **Egg Heist:** Collect eggs from the middle of `assets/models/egg-game-map.glb`
   and drop them in your outer pit, outlined green and labeled **YOU**.
   The center pile contains three eggs per player (six in solo, including the rival).
-  The camera follows directly behind your chicken, turning with you.
+  The camera follows behind your chicken by default, turning with you.
   Press **E** near an egg to pick it up; press E again to drop it at your feet.
   You can carry only one egg at a time, and holding E does not repeat the action.
   Empty-handed chickens can also press **E** near another chicken to steal its
@@ -169,7 +181,7 @@ only once.
   chicken's position. Both chickens start with three lives, shown in the HUD.
   Each pillow hit removes one life and consumes that pillow; the first chicken
   to run out of lives loses. Simultaneous final hits are a draw.
-  The overhead camera shows incoming pillows and both chickens.
+  The default overhead camera shows incoming pillows and both chickens.
   The rival uses the same forward/turn controls, speed, and boundaries as you,
   with reaction delays. It eventually tires after 22-28 seconds and stops
   dodging, so incoming pillows will eventually use up its remaining lives if
@@ -182,7 +194,7 @@ only once.
   its door when it sees you pass through yours. A monster (`assets/models/monster.glb`)
   walks behind you both at 85% of chicken speed and chases whoever is last.
   If it touches one chicken, the other wins; otherwise the first chicken past
-  the yellow finish line wins. The camera stays locked directly behind you,
+  the yellow finish line wins. The camera starts directly behind you,
   and the monster turns translucent when it is close behind you.
 
 The red rival uses the same chicken model and movement limits as the player.
@@ -271,7 +283,7 @@ red-button minigame selection remains unchanged.
 - `js/lan-game.js`: 2-8 human-player rounds using the shared minigame rules and hazards.
 - `js/shop.js`: browser-saved inventory, equipment, and LAN coin rewards.
 - `js/lan-race-view.js`: buffered, render-only interpolation of LAN race poses.
-- `js/input.js`: keyboard state and focus handling.
+- `js/input.js`: keyboard and gamepad state, menu navigation, and focus handling.
 - `js/audio.js`: generated countdown, start, and chicken sounds.
 - `js/lobby.js`: movement, collisions, countdown, rival AI, and race rules;
   independent of the DOM and Three.js.

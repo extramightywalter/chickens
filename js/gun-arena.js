@@ -261,9 +261,8 @@ export function createGunRound(random = Math.random) {
           previousAim.set(racer, keys.aimYaw);
         } else if (keys.aimYaw === undefined) previousAim.delete(racer);
         if (Number.isFinite(keys.aimPitch)) racer.pitch = Math.max(-1.1, Math.min(1.1, keys.aimPitch));
-        const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
-        const strafe = Number(Boolean(keys.d || keys.arrowright)) -
-          Number(Boolean(keys.a || keys.arrowleft));
+        const forward = Number(Boolean(keys.w)) - Number(Boolean(keys.s));
+        const strafe = Number(Boolean(keys.d)) - Number(Boolean(keys.a));
         racer.controls = { forward, strafe };
         move(racer, step, forward, strafe, SPEED, gunArena.walls);
         racer.walk = forward || strafe ? racer.walk + step * 11 : 0;

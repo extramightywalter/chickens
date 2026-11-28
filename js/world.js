@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clampOrbitPitch, createOrbitState, orbitCamera, updateOrbit } from "./camera.js";
 import { ARENA, CANNONS, CANNON_MUZZLE, PILLOW_RADIUS, arenaWalls } from "./pillows.js";
 import {
   DOOR_HALF_WIDTH, DOOR_LEAF_OFFSET, DOOR_MODEL_SCALE, DOOR_XS, FINISH_Z, PATH_END_Z,
@@ -966,9 +967,11 @@ export async function createWorld() {
   let cameraFocusInitialized = false;
   const rivalIndicator = document.getElementById("rival-indicator");
   const cameraDirection = new THREE.Vector3();
+  let orbit = createOrbitState();
 
   function resetCamera(state) {
     cameraFocusInitialized = false;
+    orbit = createOrbitState();
     if (state.minigame === "pillows") {
       const height = Math.max(26, 22 / camera.aspect);
       camPos.set(0, height, height * 0.55);
@@ -979,18 +982,19 @@ export async function createWorld() {
       state.z - Math.cos(state.yaw) * 6.5
     );
     if (state.minigame === "eggs") positionEggCamera(camPos, state);
-    if (["maze", "survival"].includes(state.minigame)) positionMazeCamera(camPos, state);
+    if (["maze", "survival"].includes(state.minigame)) {
+      camPos.set(state.x - Math.sin(state.yaw) * 2.5, 3,
+        state.z - Math.cos(state.yaw) * 2.5);
+      positionMazeCamera(camPos, state);
+    }
   }
 
   function positionMazeCamera(position, state) {
-    const desired = {
-      x: state.x - Math.sin(state.yaw) * 2.5,
-      z: state.z - Math.cos(state.yaw) * 2.5,
-    };
+    const desired = { x: position.x, z: position.z };
     const map = state.minigame === "survival" ? state.survivalMap : state.maze;
     const fraction = Math.max(0, mazeClearFraction(map.walls, state, desired, 0.18) - 0.025);
-    position.set(state.x + (desired.x - state.x) * fraction, 3,
-      state.z + (desired.z - state.z) * fraction);
+    position.x = state.x + (desired.x - state.x) * fraction;
+    position.z = state.z + (desired.z - state.z) * fraction;
   }
 
   function positionEggCamera(position, state) {
@@ -1000,7 +1004,7 @@ export async function createWorld() {
       eggFloorY(position.x, position.z)) + 4.2;
   }
 
-  function render(state, rival, dt, moving, nearButton, nearLanButton) {
+  function render(state, rival, dt, moving, nearButton, nearLanButton, cameraDt = dt) {
     const pillowGame = state.minigame === "pillows";
     const doorGame = state.minigame === "doors";
     const trackGame = state.minigame === "track";
@@ -1248,12 +1252,33 @@ export async function createWorld() {
       target.set(0, height, height * 0.55);
     }
     if (eggGame) positionEggCamera(target, state);
-    if (corridorGame) positionMazeCamera(target, state);
+    if (corridorGame) target.set(state.x - Math.sin(state.yaw) * 2.5, 3,
+      state.z - Math.cos(state.yaw) * 2.5);
     if (gunGame) target.set(state.x, gunFloorHeight(state.x, state.z) + EYE_HEIGHT, state.z);
     if (cannonGame) target.set(state.x + 2.3, Math.max(4.4, state.cannonY + 2), state.z - 7);
-    // Keep the chase camera directly behind the player in these arenas.
-    if (doorGame || eggGame || battleGame || corridorGame || gunGame) camPos.copy(target);
-    else camPos.lerp(target, 1 - Math.pow(0.0001, dt));
+    if (orbit.active && !gunGame) {
+      const focus = {
+        x: state.x,
+        y: cannonGame ? state.cannonY + 1.6 : followHeight + 1.6 + (battleGame ? state.jumpHeight : 0),
+        z: state.z,
+      };
+      if (pillowGame) {
+        target.x += state.x;
+        target.z += state.z;
+      }
+      orbit.look.pitch = clampOrbitPitch(target, focus, orbit.look.pitch);
+      const position = orbitCamera(target, focus, orbit.look);
+      target.set(position.x, position.y, position.z);
+      if (eggGame) {
+        target.x = THREE.MathUtils.clamp(target.x, -EGG_LIMIT, EGG_LIMIT);
+        target.z = THREE.MathUtils.clamp(target.z, -EGG_LIMIT, EGG_LIMIT);
+        target.y = Math.max(target.y, eggFloorY(target.x, target.z) + 0.5);
+      }
+    }
+    if (corridorGame) positionMazeCamera(target, state);
+    // Keep the camera responsive in these arenas and while orbiting.
+    if (orbit.active || doorGame || eggGame || battleGame || corridorGame || gunGame) camPos.copy(target);
+    else camPos.lerp(target, 1 - Math.pow(0.0001, cameraDt));
     camera.position.copy(camPos);
     const fadePlayer = (corridorGame && Math.hypot(camPos.x - state.x, camPos.z - state.z) < 1.5) ||
       (survivalGame && state.invulnerable > 0 && Math.sin(state.survivalTime * 30) > 0);
@@ -1269,14 +1294,15 @@ export async function createWorld() {
     }
     if (gunGame) camera.lookAt(state.x + Math.sin(state.yaw) * Math.cos(state.pitch),
       target.y + Math.sin(state.pitch), state.z + Math.cos(state.yaw) * Math.cos(state.pitch));
-    else if (cannonGame) camera.lookAt(state.cannonLane, 2, state.z + 6);
-    else if (pillowGame) camera.lookAt(0, 0, 0);
+    else if (cannonGame && !orbit.active) camera.lookAt(state.cannonLane, 2, state.z + 6);
+    else if (pillowGame && !orbit.active) camera.lookAt(0, 0, 0);
     else {
-      focusTarget.set(state.x, followHeight + 1.6, state.z);
+      focusTarget.set(state.x, cannonGame ? state.cannonY + 1.6 :
+        followHeight + 1.6 + (orbit.active && battleGame ? state.jumpHeight : 0), state.z);
       if (!cameraFocusInitialized) {
         cameraFocus.copy(focusTarget);
         cameraFocusInitialized = true;
-      } else if (state.multiplayer && trackGame) {
+      } else if (!orbit.active && state.multiplayer && trackGame) {
         cameraFocus.lerp(focusTarget, 1 - Math.pow(0.0001, dt));
       } else cameraFocus.copy(focusTarget);
       camera.lookAt(cameraFocus);
@@ -1303,5 +1329,8 @@ export async function createWorld() {
     renderer.render(scene, camera);
   }
 
-  return { resetCamera, render };
+  return {
+    resetCamera, render,
+    updateLook(keys, dt, elapsed) { updateOrbit(orbit, keys, dt, elapsed); },
+  };
 }

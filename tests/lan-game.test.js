@@ -99,6 +99,25 @@ test("only each human's own controls move their chicken at the normal speed", ()
   }
 });
 
+test("arrow keys do not move LAN chickens in any minigame", () => {
+  for (const minigame of MINIGAMES) {
+    const game = round(minigame, 2);
+    game.update(3);
+    const player = game.racers[0];
+    for (const key of ["arrowleft", "arrowright", "arrowup", "arrowdown"]) {
+      const before = { x: player.x, z: player.z, yaw: player.yaw };
+      game.update(0.01, new Map([[player.id, { [key]: true }]]));
+      assert.deepEqual({ x: player.x, z: player.z, yaw: player.yaw }, before, `${minigame}: ${key}`);
+    }
+    if (minigame === "cannon-race") {
+      player.cannonPhase = "aim";
+      const before = { x: player.cannonAimX, y: player.cannonAimY };
+      game.update(0.1, new Map([[player.id, { arrowleft: true, arrowup: true }]]));
+      assert.deepEqual({ x: player.cannonAimX, y: player.cannonAimY }, before);
+    }
+  }
+});
+
 test("LAN players can independently spin and dive using E and Space", () => {
   const game = round("pillows");
   game.update(3);

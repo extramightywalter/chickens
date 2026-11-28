@@ -118,8 +118,8 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
     if (minigame === "maze") {
       const winners = mazeRound.advance(state, racers, dt, (racer, step) => {
         const keys = inputs.get(racer.id) ?? {};
-        const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
-        const turn = Number(Boolean(keys.a || keys.arrowleft)) - Number(Boolean(keys.d || keys.arrowright));
+        const forward = Number(Boolean(keys.w)) - Number(Boolean(keys.s));
+        const turn = Number(Boolean(keys.a)) - Number(Boolean(keys.d));
         racer.controls = { forward, turn };
         moveRacer(racer, step, forward, turn, SPEED, state.maze.walls);
         racer.walk = forward ? racer.walk + step * 11 : 0;
@@ -143,10 +143,8 @@ export function createLanGame(minigame, playerIds, random = Math.random) {
         previousKeys, !racer.eliminated && !stunned);
       if (minigame === "eggs") previousKeys.e = keys.e === true;
       if (racer.eliminated) continue;
-      const forward = Number(Boolean(keys.w || keys.arrowup)) -
-        Number(Boolean(keys.s || keys.arrowdown));
-      const turn = Number(Boolean(keys.a || keys.arrowleft)) -
-        Number(Boolean(keys.d || keys.arrowright));
+      const forward = Number(Boolean(keys.w)) - Number(Boolean(keys.s));
+      const turn = Number(Boolean(keys.a)) - Number(Boolean(keys.d));
       const movement = stunned ? 0 : racer.diveTimer > 0 ? Math.max(forward, 1) : forward;
       const actualTurn = stunned ? 0 : turn;
       const speed = SPEED * (racer.spinTimer > 0 ? 0.5 : 1) *

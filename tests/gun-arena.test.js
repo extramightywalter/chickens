@@ -175,7 +175,7 @@ test("all five vents remain traversable low steps instead of raised blockers", (
   }
 });
 
-test("A/D and Left/Right strafe in matching directions without turning", () => {
+test("A/D strafe in matching directions without turning", () => {
   const game = lan();
   lineUp(game);
   game.update(0.1, new Map([["p0", { aimYaw: 0.2, aimPitch: 10 }]]));
@@ -184,7 +184,7 @@ test("A/D and Left/Right strafe in matching directions without turning", () => {
   game.update(0.1, new Map([["p0", { aimYaw: NaN, aimPitch: Infinity }]]));
   assert.ok(Number.isFinite(game.racers[0].yaw));
   assert.ok(Number.isFinite(game.racers[0].pitch));
-  for (const [key, direction] of [["a", -1], ["arrowleft", -1], ["d", 1], ["arrowright", 1]]) {
+  for (const [key, direction] of [["a", -1], ["d", 1]]) {
     for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
       const round = lan();
       lineUp(round);

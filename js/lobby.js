@@ -368,8 +368,8 @@ export function createGame({ random = Math.random } = {}) {
         return { moving: false, dt: 0 };
       }
       state.goTimer = Math.max(0, state.goTimer - elapsed);
-      const forward = Number(Boolean(keys.w || keys.arrowup)) - Number(Boolean(keys.s || keys.arrowdown));
-      const turn = Number(Boolean(keys.a || keys.arrowleft)) - Number(Boolean(keys.d || keys.arrowright));
+      const forward = Number(Boolean(keys.w)) - Number(Boolean(keys.s));
+      const turn = Number(Boolean(keys.a)) - Number(Boolean(keys.d));
       const winners = mazeRound.advance(state, [state, rival], dt, (racer, step) => {
         if (racer === rival) mazeRound.chooseControls(state, racer);
         else racer.controls = { forward, turn };
@@ -407,11 +407,10 @@ export function createGame({ random = Math.random } = {}) {
       state.goTimer = Math.max(0, state.goTimer - elapsed);
     }
     if (["lobby", "track", "pillows", "doors", "eggs", "egg-battle"].includes(state.scene)) {
-      const turn = Number(Boolean(keys["a"] || keys["arrowleft"])) -
-        Number(Boolean(keys["d"] || keys["arrowright"]));
+      const turn = Number(Boolean(keys.a)) - Number(Boolean(keys.d));
       let fwd = 0;
-      if (keys["w"] || keys["arrowup"]) fwd += 1;
-      if (keys["s"] || keys["arrowdown"]) fwd -= 1;
+      if (keys.w) fwd += 1;
+      if (keys.s) fwd -= 1;
       if (playerStunned) fwd = 0;
       else if (state.diveTimer > 0) fwd = Math.max(fwd, 1);
       moving = fwd !== 0;

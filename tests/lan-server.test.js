@@ -326,9 +326,7 @@ test("Chicken Blaster LAN transmits authoritative aim, firing, health and arena 
   const guestView = await guest.next("round", data => data.racers[0].shotsFired > 0);
   assert.deepEqual(guestView.racers, fired.racers);
   let latest = fired;
-  for (const [key, direction] of [
-    ["a", -1], ["arrowleft", -1], ["d", 1], ["arrowright", 1],
-  ]) {
+  for (const [key, direction] of [["a", -1], ["d", 1]]) {
     const before = latest.racers[0];
     assert.equal((await host.action("input", { keys: { [key]: true } })).status, 200);
     latest = await host.next("round", data => {

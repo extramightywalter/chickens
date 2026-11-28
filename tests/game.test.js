@@ -112,19 +112,25 @@ test("returning from a minigame places the player on the button", () => {
   assert.equal(game.nearButton(), true);
 });
 
-test("movement and turning retain WASD and arrow key controls", () => {
-  for (const key of ["w", "arrowup", "s", "arrowdown"]) {
+test("WASD moves and turns while arrow keys do not move the chicken", () => {
+  for (const key of ["w", "s"]) {
     const game = createGame();
     const before = game.state.x;
     game.update(0.05, 0.05, { [key]: true });
-    const direction = key === "w" || key === "arrowup" ? 1 : -1;
+    const direction = key === "w" ? 1 : -1;
     assert.ok(Math.abs(game.state.x - before - direction * SPEED * 0.05) < 1e-10);
   }
-  for (const key of ["a", "arrowleft", "d", "arrowright"]) {
+  for (const key of ["a", "d"]) {
     const game = createGame();
     const before = game.state.yaw;
     game.update(0.05, 0.05, { [key]: true });
-    assert.equal(game.state.yaw > before, key === "a" || key === "arrowleft");
+    assert.equal(game.state.yaw > before, key === "a");
+  }
+  for (const key of ["arrowup", "arrowdown", "arrowleft", "arrowright"]) {
+    const game = createGame();
+    const { x, z, yaw } = game.state;
+    game.update(0.05, 0.05, { [key]: true });
+    assert.deepEqual({ x: game.state.x, z: game.state.z, yaw: game.state.yaw }, { x, z, yaw });
   }
 });
 
